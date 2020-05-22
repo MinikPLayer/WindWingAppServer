@@ -55,7 +55,6 @@ namespace WindWingAppServer
                     {
                         string str = "";
                         Debug.Log("Field count: " + reader.FieldCount);
-                        //Console.WriteLine("Table: " + reader.GetString(0));
                         for (int i = 0; i < reader.FieldCount; i++)
                         {
                             str += reader.GetString(i) + separator;
@@ -98,20 +97,36 @@ namespace WindWingAppServer
             }
 
             public static ColumnString STRING = new ColumnString();
+            public static ColumnInt INT = new ColumnInt();
+            public static ColumnBool BOOLEAN = new ColumnBool();
+            public static ColumnDateTime DATETIME = new ColumnDateTime();
+            public static ColumnTime TIME = new ColumnTime();
         }
 
-        public class ColumnString : ColumnType
+        public class ColumnString : ColumnType { 
+            public ColumnString() :base(typeof(string), "TEXT") { }
+            public override object GetValue(MySqlDataReader reader, int index) { return reader.GetString(index); }
+        }
+
+        public class ColumnInt : ColumnType { 
+            public ColumnInt() : base(typeof(int), "INT") { }
+            public override object GetValue(MySqlDataReader reader, int index){ return reader.GetInt32(index); }
+        }
+
+        public class ColumnBool : ColumnType {
+            public ColumnBool() : base(typeof(bool), "BOOLEAN") { }
+            public override object GetValue(MySqlDataReader reader, int index) { return reader.GetBoolean(index); }
+        }
+
+        public class ColumnDateTime : ColumnType { 
+            public ColumnDateTime() : base(typeof(bool), "DATETIME") { }
+            public override object GetValue(MySqlDataReader reader, int index) { return reader.GetDateTime(index); }
+        }
+
+        public class ColumnTime : ColumnType
         {
-            public ColumnString()
-                :base(typeof(string), "TEXT")
-            {
-
-            }
-
-            public override object GetValue(MySqlDataReader reader, int index)
-            {
-                return reader.GetString(index);
-            }
+            public ColumnTime() : base(typeof(bool), "TIME") { }
+            public override object GetValue(MySqlDataReader reader, int index) { return reader.GetTimeSpan(index); }
         }
 
         public class Column
@@ -150,10 +165,191 @@ namespace WindWingAppServer
             ExecuteCommand("DROP TABLE " + name + ";");
         }
 
+        string[] GetTablesNames()
+        {
+            return GetData("information_schema.tables", "TABLE_NAME", "WHERE table_schema = \'" + databaseName + "\'");
+        }
+
+        public void DropAllTables()
+        {
+            //ExecuteCommand("DROP TABLE *;");
+            string[] names = GetTablesNames();
+            for(int i = 0;i<names.Length;i++)
+            {
+                Debug.Log("Dropping table: " + names[i]);
+                DropTable(names[i]);
+            }
+        }
+
         public bool TableExists(string table)
         {
             string[] result = GetData("information_schema.tables", "TABLE_NAME", "WHERE table_schema = \'" + databaseName + "\' AND table_name = \'" + table + "\'", 1);
             return result.Length == 1;
+        }
+
+        public class Value
+        {
+            public string name;
+            public string value;
+
+            public Value(string name, string value)
+            {
+                this.name = name;
+                this.value = value;
+            }
+
+            public Value(string name, int value)
+            {
+                this.name = name;
+                this.value = value.ToString();
+            }
+            public Value(string name, bool value)
+            {
+                this.name = name;
+                if (value)
+                {
+                    this.value = "1";
+                }
+                else
+                {
+                    this.value = "0";
+                }
+            }
+        }
+
+        //public void AddEntry(string table, List<string> columns, List<string> values)  // string columns, string values)
+        
+        public void AddEntries(string table, List<string> names, List<List<string>> values)
+        {
+            /*for(int i = 0;i<values.Count;i++)
+            {
+                AddEntry(table, values[i]);
+            }*/
+
+            for(int i = 0;i<values.Count;i++)
+            {
+                if(values[i].Count > names.Count)
+                {
+                    Debug.LogError("[MSQL.AddEntries] Not enough names");
+                    return;
+                }
+                List<Value> vs = new List<Value>();
+                for(int j = 0;j<values[i].Count;j++)
+                {
+                    vs.Add(new Value(names[j], values[i][j]));
+                }
+
+                AddEntry(table, vs);
+            }
+        }
+
+        public void AddEntry(string table, List<Value> values)
+        {
+            string cmd = "INSERT INTO " + table + "(";//" (\' ";
+            for(int i = 0;i<values.Count;i++)
+            {
+                cmd += values[i].name;
+                if (i == values.Count - 1)
+                {
+                    cmd += ") VALUES (\'"; //"\') VALUES (\' ";
+                }
+                else
+                {
+                    cmd += ","; //"\',\' ";
+                }
+            }
+            for (int i = 0; i < values.Count; i++)
+            {
+                cmd += values[i].value;
+                if (i == values.Count - 1)
+                {
+                    cmd += "\');";
+                }
+                else
+                {
+                    cmd += "\',\' ";
+                }
+            }
+            ExecuteCommand(cmd);
+        }
+
+        public void RemoveEntry(string table, Value value)
+        {
+            ExecuteCommand("DELETE FROM " + table + " WHERE " + value.name + " = " + value.value);
+        }
+
+        public void ModifyEntry(string table, Value value)
+        {
+            ExecuteCommand("UPDATE " + table + " SET " + value.name + " = " + value.value + ";");
+        }
+
+        public void ModifyEntries(string table, List<Value> values)
+        {
+            string cmd = "UPDATE " + table + " SET ";
+            for(int i = 0;i<values.Count;i++)
+            {
+                cmd += values[i].name + " = " + values[i].value;
+                if(i == values.Count - 1)
+                {
+                    cmd += ';';
+                }
+                else
+                {
+                    cmd += ',';
+                }
+            }
+
+            ExecuteCommand(cmd);
+        }
+
+        public T[] ReadEntry<T>(string table, Column column, string where = "")
+        {
+            string cmd = "SELECT " + column.name + " FROM " + table + " " + where;
+            List<T> objects = new List<T>();
+            using (var command = new MySqlCommand(cmd, mySQL))
+            {
+                using (var reader = command.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        objects.Add((T)column.type.GetValue(reader, 0));
+                    }
+                }
+            }
+
+            return objects.ToArray();
+        }
+
+        public object[] ReadEntry(string table, Column column, string where = "")
+        {
+            /*string cmd = "SELECT " + column.name + " FROM " + table + " " + where;
+            List<object> objects = new List<object>();
+            using (var command = new MySqlCommand(cmd, mySQL))
+            {
+                using (var reader = command.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        objects.Add(column.type.GetValue(reader, 0));
+                    }
+                }
+            }
+
+            return objects.ToArray();*/
+
+            return ReadEntry<object>(table, column, where);
+        }
+
+        public List<object[]> ReadEntries(string table, List<Column> columns, string where = "")
+        {
+
+            List<object[]> arrays = new List<object[]>();
+            for(int i = 0;i<columns.Count;i++)
+            {
+                arrays.Add(ReadEntry(table, columns[i], where));
+            }
+            return arrays;
+
         }
 
         ~MSQL()
