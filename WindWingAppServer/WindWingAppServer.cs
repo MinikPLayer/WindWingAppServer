@@ -27,9 +27,103 @@ namespace WindWingAppServer
                 this.length = length;
             }
 
-            public List<string> ToSQLFormat()
+            public List<string> ToSQL()
             {
                 return new List<string>() { id.ToString(), name, country, city, length.ToString() };
+            }
+        }
+
+        public class User
+        {
+            public int id;
+            public string login;
+            public string password;
+            public string steam;
+
+            public TimeSpan bestLapDry;
+            public TimeSpan bestLapWet;
+
+            public string bestLapDryLink;
+            public string bestLapWetLink;
+
+            /// <summary>
+            /// Registered after S1
+            /// </summary>
+            public bool newUserType;
+
+            public bool admin = false;
+
+            public User()
+            {
+
+            }
+
+            public User(int id, string login, string password, string steam, TimeSpan bestLapDry, TimeSpan bestLapWet, string bestLapDryLink, string bestLapWetLink, bool admin = false)
+            {
+                FillVariables(id, login, password, steam, bestLapDry, bestLapWet, bestLapDryLink, bestLapWetLink, admin);
+            }
+
+            public User(int id, string login, string steam, bool admin = false)
+            {
+                this.id = id;
+                this.login = login;
+                this.steam = steam;
+                this.admin = admin;
+            }
+
+            public void FillVariables(int id, string login, string password, string steam, TimeSpan bestLapDry, TimeSpan bestLapWet, string bestLapDryLink, string bestLapWetLink, bool admin = false)
+            {
+                this.id = id;
+                this.login = login;
+                this.password = password;
+                this.steam = steam;
+                this.bestLapDry = bestLapDry;
+                this.bestLapWet = bestLapWet;
+                this.bestLapDryLink = bestLapDryLink;
+                this.bestLapWetLink = bestLapWetLink;
+
+                this.admin = admin;
+
+                newUserType = true;
+            }
+
+            public List<string> ToSQL()
+            {
+                return new List<string>() { id.ToString(), login, password, steam, bestLapDry.ToString(), bestLapWet.ToString(), bestLapDryLink, bestLapWetLink, admin ? "1" : "0" };
+            }
+
+            public List<MSQL.Value> ToSQLValues()
+            {
+                return new List<MSQL.Value>(){
+                    new MSQL.Value("id", id),
+                    new MSQL.Value("login", login),
+                    new MSQL.Value("password", password),
+                    new MSQL.Value("steam", steam),
+                    new MSQL.Value("bestlapdry", bestLapDry),
+                    new MSQL.Value("bestlapwet", bestLapWet),
+                    new MSQL.Value("bestlapdrylink", bestLapDryLink),
+                    new MSQL.Value("bestlapwetlink", bestLapWetLink),
+                    new MSQL.Value("admin", admin)
+                };
+            }
+
+            public void LoadFromSQL(object[] data)
+            {
+                if(data.Length < 9)
+                {
+                    Debug.LogError("[User.LoadFromSQL] Not enough data to load from, found only " + data.Length + " columns");
+                    return;
+                }
+
+                id = (int)data[0];
+                login = (string)data[1];
+                password = (string)data[2];
+                steam = (string)data[3];
+                bestLapDry = (TimeSpan)data[4];
+                bestLapWet = (TimeSpan)data[5];
+                bestLapDryLink = (string)data[6];
+                bestLapWetLink = (string)data[7];
+                admin = (bool)data[8];
             }
         }
 
@@ -56,6 +150,38 @@ namespace WindWingAppServer
                 new Track(19, "Autódromo José Carlos Pace", "Brazylia", "Sao Paulo", 4309),
                 new Track(20, "Yas Marina Circuit", "Zjedoczone Emiraty Arabskie", "Abu Dhabi", 5554)
         };
+
+        List<User> users = new List<User>();
+
+        public void RegisterUser(User user)
+        {
+            sql.AddEntry("users", user.ToSQLValues());
+            users.Add(user);
+        }
+
+        void AddUser(User user)
+        {
+            users.Add(user);
+        }
+
+        User CreateUser(object[] data)
+        {
+            User u = new User();
+
+            u.LoadFromSQL(data);
+
+            return u;
+        }
+
+        User CreateUser(string login, string password, string steam, TimeSpan bestLapDry, TimeSpan bestLapWet, string bestLapDryLink, string bestLapWetLink)
+        {
+            return new User(users.Count, login, password, steam, bestLapDry, bestLapWet, bestLapDryLink, bestLapWetLink);
+        }
+
+        User CreateUser(string login, string steam)
+        {
+            return new User(users.Count, login, steam);
+        }
 
         bool WriteSeasonTable(int season, int usersCount, int racesCount, bool finished, bool overwrite = false)
         {
@@ -92,17 +218,15 @@ namespace WindWingAppServer
             int count = sql.ReadEntry<int>("dbinfo", new MSQL.Column("seasonsCount", MSQL.ColumnType.INT))[0];
             sql.ModifyEntry("dbinfo", new MSQL.Value("seasonsCount", count + 1));
 
+            sql.CreateTable("s" + season.ToString(), new List<MSQL.Column>() {
+                new MSQL.Column("id", MSQL.ColumnType.INT),
+                new MSQL.Column("trackid",  MSQL.ColumnType.INT),
+                new MSQL.Column("completed",  MSQL.ColumnType.BOOLEAN),
+                new MSQL.Column("racedate",  MSQL.ColumnType.DATETIME),
+                new MSQL.Column("resultstable", MSQL.ColumnType.STRING)
+            });
+
             return true;
-        }
-
-        void WriteSeason1Table()
-        {
-            WriteSeasonTable(1, 25, 12, true);
-
-            /*sql.CreateTable("s1_results", new List<MSQL.Column>()
-            {
-
-            });*/
         }
 
         List<List<string>> TracksToSql()
@@ -110,7 +234,7 @@ namespace WindWingAppServer
             List<List<string>> data = new List<List<string>>();
             for(int i = 0;i<tracks.Length;i++)
             {
-                data.Add(tracks[i].ToSQLFormat());
+                data.Add(tracks[i].ToSQL());
             }
             return data;
         }
@@ -118,7 +242,6 @@ namespace WindWingAppServer
         void FillTracksTable()
         {
             sql.AddEntries("tracks", new List<string>() { "id", "name", "country", "city", "tracklength", "trackrecord" }, TracksToSql());
-            
         }
 
         void CreateDBStructure()
@@ -155,14 +278,59 @@ namespace WindWingAppServer
                 new MSQL.Column("login", MSQL.ColumnType.STRING),
                 new MSQL.Column("password", MSQL.ColumnType.STRING),
                 new MSQL.Column("steam", MSQL.ColumnType.STRING),
-                new MSQL.Column("bestlapdry", MSQL.ColumnType.INT),
-                new MSQL.Column("bestlapwet", MSQL.ColumnType.INT),
+                new MSQL.Column("bestlapdry", MSQL.ColumnType.TIME),
+                new MSQL.Column("bestlapwet", MSQL.ColumnType.TIME),
                 new MSQL.Column("bestlapdrylink", MSQL.ColumnType.STRING),
-                new MSQL.Column("bestlapwetlink", MSQL.ColumnType.STRING)
+                new MSQL.Column("bestlapwetlink", MSQL.ColumnType.STRING),
+                new MSQL.Column("admin", MSQL.ColumnType.BOOLEAN)
             });
 
+
+            CreateDBDebugStuff();
+
             FillTracksTable();
-            WriteSeason1Table();
+            //WriteSeason1Table();
+        }
+
+        void LoadUsersFromDB()
+        {
+            List<object[]> objects = sql.ReadEntries("users", new List<MSQL.Column>()
+            {
+                new MSQL.Column("id", MSQL.ColumnType.INT),
+                new MSQL.Column("login", MSQL.ColumnType.STRING),
+                new MSQL.Column("password", MSQL.ColumnType.STRING),
+                new MSQL.Column("steam", MSQL.ColumnType.STRING),
+                new MSQL.Column("bestlapdry", MSQL.ColumnType.TIME),
+                new MSQL.Column("bestlapwet", MSQL.ColumnType.TIME),
+                new MSQL.Column("bestlapdrylink", MSQL.ColumnType.STRING),
+                new MSQL.Column("bestlapwetlink", MSQL.ColumnType.STRING),
+                new MSQL.Column("admin", MSQL.ColumnType.BOOLEAN)
+            });
+
+            if (objects.Count == 0) return;
+
+            List<object[]> uObjects = new List<object[]>(objects[0].Length);
+            for(int i = 0;i<objects[0].Length; i++)
+            {
+                object[] data = new object[objects.Count];
+                for(int j = 0;j<objects.Count;j++)
+                {
+                    data[j] = objects[j][i];
+                }
+                uObjects.Add(data);
+            }
+            for(int i = 0;i<uObjects.Count;i++)
+            {
+                //AddUser(CreateUser(objects[i]));
+                User u = CreateUser(uObjects[i]);
+                Debug.Log("Loaded user " + u.id + ": \"" + u.login + "\" with password: \"" + u.password + "\"");
+                AddUser(u);
+            }
+        }
+
+        void GetDBData()
+        {
+            LoadUsersFromDB();
         }
 
         public WindWingAppServer()
@@ -173,18 +341,19 @@ namespace WindWingAppServer
             Console.WriteLine("Table dbinfo exists: " + exists);
             if (exists)
             {
-                sql.DropAllTables();
-                //sql.CreateTable("users", new List<MSQL.Column>() { new MSQL.Column("login", MSQL.ColumnType.STRING), new MSQL.Column("password", MSQL.ColumnType.STRING), new MSQL.Column("email", MSQL.ColumnType.STRING) });
-                CreateDBStructure();
+                GetDBData();
             }
             else
             {
-                //sql.CreateTable("users", new List<MSQL.Column>() { new MSQL.Column("login", MSQL.ColumnType.STRING), new MSQL.Column("password", MSQL.ColumnType.STRING), new MSQL.Column("email", MSQL.ColumnType.STRING) });
                 CreateDBStructure();
             }
 
-            //sql.AddEntry("users", new List<string>() { "login", "password", "email" }, new List<string>() { "user1", "pass1", "user1@gmail.com" });  //"login,password,email", "user1,pass1,user1@gmail.com");
+        }
 
+        void CreateDBDebugStuff()
+        {
+            RegisterUser(CreateUser("TestUser", "123qwe", "https://steamcommunity.com/user/MinikPLayer2", new TimeSpan(0, 0, 1, 20, 000), new TimeSpan(0, 0, 1, 40, 000), "", ""));
+            RegisterUser(CreateUser("SecondTestUser", "456rty", "https://steamcommunity.com/user/MinikPLayer", new TimeSpan(0, 0, 1, 18, 000), new TimeSpan(0, 0, 1, 42, 000), "", "")); 
         }
     }
 }

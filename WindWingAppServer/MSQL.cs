@@ -215,17 +215,22 @@ namespace WindWingAppServer
                     this.value = "0";
                 }
             }
+
+            public Value(string name, DateTime value)
+            {
+                this.name = name;
+                this.value = value.ToString();
+            }
+
+            public Value(string name, TimeSpan value)
+            {
+                this.name = name;
+                this.value = value.ToString();
+            }
         }
 
-        //public void AddEntry(string table, List<string> columns, List<string> values)  // string columns, string values)
-        
         public void AddEntries(string table, List<string> names, List<List<string>> values)
         {
-            /*for(int i = 0;i<values.Count;i++)
-            {
-                AddEntry(table, values[i]);
-            }*/
-
             for(int i = 0;i<values.Count;i++)
             {
                 if(values[i].Count > names.Count)
@@ -245,31 +250,32 @@ namespace WindWingAppServer
 
         public void AddEntry(string table, List<Value> values)
         {
-            string cmd = "INSERT INTO " + table + "(";//" (\' ";
+            string cmd = "INSERT INTO " + table + "(";
             for(int i = 0;i<values.Count;i++)
             {
                 cmd += values[i].name;
-                if (i == values.Count - 1)
+                if (i != values.Count - 1)
                 {
-                    cmd += ") VALUES (\'"; //"\') VALUES (\' ";
+                    cmd += ",";
                 }
                 else
                 {
-                    cmd += ","; //"\',\' ";
+                    cmd += ") VALUES (\'";
                 }
             }
             for (int i = 0; i < values.Count; i++)
             {
                 cmd += values[i].value;
-                if (i == values.Count - 1)
+                if (i != values.Count - 1)
                 {
-                    cmd += "\');";
+                    cmd += "\',\'";
                 }
                 else
                 {
-                    cmd += "\',\' ";
+                    cmd += "\');";
                 }
             }
+
             ExecuteCommand(cmd);
         }
 
