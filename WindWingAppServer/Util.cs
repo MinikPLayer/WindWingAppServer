@@ -275,7 +275,8 @@ public static class Debug
         }
         else
         {
-            Console.Write("[DEBUG] " + data);
+            //Console.Write("[DEBUG] " + data);
+            Console.Write(data);
         }
         Console.ForegroundColor = originalColor;
     }

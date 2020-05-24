@@ -12,7 +12,14 @@ namespace WindWingAppServer
         {
             Console.WriteLine("Starting server...");
 
-            WindWingAppServer server = new WindWingAppServer();
+            bool clear = false;
+            if(args.Length > 0 && args[0] == "-clear")
+            {
+                clear = true;
+                Debug.Log("Clearing DB...");
+            }
+
+            WindWingAppServer server = new WindWingAppServer(clear);
         }
     }
 }

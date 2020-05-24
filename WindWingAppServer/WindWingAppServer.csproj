@@ -7,12 +7,7 @@
 
   <ItemGroup>
     <PackageReference Include="MySqlConnector" Version="0.66.0" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Reference Include="NetworkCommsDotNetComplete">
-      <HintPath>F:\BibliotekiC#\NetworkCommsDotNet\NetworkCommsDotNetComplete.dll</HintPath>
-    </Reference>
+    <PackageReference Include="Network" Version="6.1.4.20" />
   </ItemGroup>
 
 </Project>

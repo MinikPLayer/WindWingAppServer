@@ -3,6 +3,8 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 
+using System.Threading;
+
 namespace WindWingAppServer
 {
     public class MSQL
@@ -44,31 +46,48 @@ namespace WindWingAppServer
             return ExecuteCommand(cmd, separator);
         }
 
+
+        bool sqlBusy = false;
         public string[] ExecuteCommand(string cmd, char separator = ';')
         {
-            List<string> data = new List<string>();
-            using (var command = new MySqlCommand(cmd, mySQL))
+            while(sqlBusy)
             {
-                using (var reader = command.ExecuteReader())
-                {
-                    while (reader.Read())
-                    {
-                        string str = "";
-                        Debug.Log("Field count: " + reader.FieldCount);
-                        for (int i = 0; i < reader.FieldCount; i++)
-                        {
-                            str += reader.GetString(i) + separator;
-                        }
-                        if (str.Length != 0)
-                        {
-                            str = str.Substring(0, str.Length - 1); // remove last separator
-                        }
+                Thread.Sleep(10);
+            }
 
-                        data.Add(str);
+            List<string> data = new List<string>();
+            sqlBusy = true;
+            try
+            {
+                
+                using (var command = new MySqlCommand(cmd, mySQL))
+                {
+                    using (var reader = command.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            string str = "";
+                            Debug.Log("Field count: " + reader.FieldCount);
+                            for (int i = 0; i < reader.FieldCount; i++)
+                            {
+                                str += reader.GetString(i) + separator;
+                            }
+                            if (str.Length != 0)
+                            {
+                                str = str.Substring(0, str.Length - 1); // remove last separator
+                            }
+
+                            data.Add(str);
+                        }
                     }
                 }
             }
+            catch(Exception e)
+            {
+                Debug.Exception(e, "[MSQL.ExecuteCommand]");
+            }
 
+            sqlBusy = false;
             return data.ToArray();
         }
 
@@ -146,14 +165,14 @@ namespace WindWingAppServer
             string cmd = "CREATE TABLE " + name + " (";
             for (int i = 0;i<columns.Count;i++)
             {
-                cmd += columns[i].name + " " + columns[i].type.sqlTypeStr + " NOT NULL";
+                cmd += columns[i].name.Replace("\'", "\'\'") + " " + columns[i].type.sqlTypeStr + " NOT NULL";
                 if (i != columns.Count - 1)
                 {
                     cmd += ',';
                 }
                 else
                 {
-                    cmd += ");";
+                    cmd += ") CHARSET=utf32 COLLATE utf32_bin;";
                 }
             }
 
@@ -241,7 +260,7 @@ namespace WindWingAppServer
                 List<Value> vs = new List<Value>();
                 for(int j = 0;j<values[i].Count;j++)
                 {
-                    vs.Add(new Value(names[j], values[i][j]));
+                    vs.Add(new Value(names[j].Replace("\'", "\'\'"), values[i][j].Replace("\'", "\'\'")));
                 }
 
                 AddEntry(table, vs);
@@ -253,7 +272,7 @@ namespace WindWingAppServer
             string cmd = "INSERT INTO " + table + "(";
             for(int i = 0;i<values.Count;i++)
             {
-                cmd += values[i].name;
+                cmd += values[i].name.Replace("\'", "\'\'");
                 if (i != values.Count - 1)
                 {
                     cmd += ",";
@@ -265,7 +284,7 @@ namespace WindWingAppServer
             }
             for (int i = 0; i < values.Count; i++)
             {
-                cmd += values[i].value;
+                cmd += values[i].value.Replace("\'", "\'\'");
                 if (i != values.Count - 1)
                 {
                     cmd += "\',\'";
@@ -281,12 +300,12 @@ namespace WindWingAppServer
 
         public void RemoveEntry(string table, Value value)
         {
-            ExecuteCommand("DELETE FROM " + table + " WHERE " + value.name + " = " + value.value);
+            ExecuteCommand("DELETE FROM " + table + " WHERE " + value.name.Replace("\'", "\'\'") + " = " + value.value.Replace("\'", "\'\'"));
         }
 
         public void ModifyEntry(string table, Value value)
         {
-            ExecuteCommand("UPDATE " + table + " SET " + value.name + " = " + value.value + ";");
+            ExecuteCommand("UPDATE " + table + " SET " + value.name.Replace("\'", "\'\'") + " = " + value.value.Replace("\'", "\'\'") + ";");
         }
 
         public void ModifyEntries(string table, List<Value> values)
@@ -294,7 +313,7 @@ namespace WindWingAppServer
             string cmd = "UPDATE " + table + " SET ";
             for(int i = 0;i<values.Count;i++)
             {
-                cmd += values[i].name + " = " + values[i].value;
+                cmd += values[i].name.Replace("\'", "\'\'") + " = " + values[i].value.Replace("\'", "\'\'");
                 if(i == values.Count - 1)
                 {
                     cmd += ';';
