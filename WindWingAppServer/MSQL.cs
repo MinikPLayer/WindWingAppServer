@@ -41,7 +41,6 @@ namespace WindWingAppServer
             }
 
             cmd += ';';
-            Console.WriteLine("Command: " + cmd);
 
             return ExecuteCommand(cmd, separator);
         }
@@ -67,7 +66,6 @@ namespace WindWingAppServer
                         while (reader.Read())
                         {
                             string str = "";
-                            Debug.Log("Field count: " + reader.FieldCount);
                             for (int i = 0; i < reader.FieldCount; i++)
                             {
                                 str += reader.GetString(i) + separator;
@@ -191,11 +189,9 @@ namespace WindWingAppServer
 
         public void DropAllTables()
         {
-            //ExecuteCommand("DROP TABLE *;");
             string[] names = GetTablesNames();
             for(int i = 0;i<names.Length;i++)
             {
-                Debug.Log("Dropping table: " + names[i]);
                 DropTable(names[i]);
             }
         }
@@ -238,7 +234,8 @@ namespace WindWingAppServer
             public Value(string name, DateTime value)
             {
                 this.name = name;
-                this.value = value.ToString();
+                //this.value = value.ToString();
+                this.value = value.Year + "-" + value.Month + "-" + value.Day + " " + value.Hour + ":" + value.Minute + ":" + value.Second;
             }
 
             public Value(string name, TimeSpan value)

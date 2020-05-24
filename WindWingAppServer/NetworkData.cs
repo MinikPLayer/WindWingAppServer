@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text;
 
 using Network;
@@ -93,34 +94,72 @@ namespace WindWingAppServer
                 return;
             }
 
-            switch (info[0])
+            try
             {
-                case "SC": // Seasons Count
-                    Send(connection, data.Key, server.seasons.Count.ToString());
-                    break;
+                switch (info[0])
+                {
+                    case "SC": // Seasons Count
+                        Send(connection, data.Key, server.seasons.Count.ToString());
+                        break;
 
-                case "RD": // Registration Data
-                    WindWingAppServer.RegistrationData[] datas = server.GetRegistrationData();
+                    case "RD": // Registration Data
+                        WindWingAppServer.RegistrationData[] datas = server.GetRegistrationData();
 
-                    if(datas.Length == 0)
-                    {
-                        Send(connection, data.Key, "0");
-                        return;
-                    }
+                        if (datas.Length == 0)
+                        {
+                            Send(connection, data.Key, "0");
+                            return;
+                        }
 
-                    string response = datas.Length.ToString() + "{";
-                    for(int i = 0;i<datas.Length;i++)
-                    {
-                        response += datas[i].ToString();
-                    }
-                    response += "}";
-                    Send(connection, data.Key, response);
-                    break;
-                default:
-                    Send(connection, data.Key, "UR;Unknown request");
-                    break;
+                        string response = datas.Length.ToString() + "{";
+                        for (int i = 0; i < datas.Length; i++)
+                        {
+                            response += datas[i].ToString();
+                        }
+                        response += "}";
+                        Send(connection, data.Key, response);
+                        break;
+
+                    case "SD": // Season data
+                        if (info.Length < 2)
+                        {
+                            Send(connection, data.Key, "BP;Brak wystarczajacej ilosci parametrow");
+                            return;
+                        }
+
+                        if (info.Length == 3) // Users or races         TO DO
+                        {
+                            Send(connection, data.Key, "NI;Not implemented");
+                            for(int i = 0;i<info.Length;i++)
+                            {
+                                Debug.Log("\"" + info[i] + "\"");
+                            }
+                        }
+                        else if (info.Length == 2)
+                        {
+                            int seasonN = int.Parse(info[1]);
+                            var season = server.GetSeason(seasonN);
+                            if (season == null)
+                            {
+                                Send(connection, data.Key, "BS;Nie znaleziono sezonu o tym numerze");
+                                return;
+                            }
+
+                            string str = "(" + season.id.ToString() + "," + season.racesCount + "," + season.users.Count + ")";
+                            Send(connection, data.Key, str);
+                        }
+                        break;
+
+                    default:
+                        Send(connection, data.Key, "UR;Nieznany tag info");
+                        break;
+                }
+
             }
-
+            catch(Exception e)
+            {
+                Send(connection, data.Key, "IE;Blad wewnetrzny servera;" + e.ToString());
+            }
         }
 
         void RegisterUserRequest(RawData data, Connection con)
@@ -221,6 +260,92 @@ namespace WindWingAppServer
             }
         }
 
+        void AdminRequest(RawData data, Connection con)
+        {
+            try
+            {
+                var user = GetUser(con);
+                if (!user.admin)
+                {
+                    Send(con, data.Key, "NA;Nie jestes adminem, przykro mi");
+                    return;
+                }
+
+                string[] info = GetString(data).Split(';');
+
+                if (info.Length == 0)
+                {
+                    Send(con, data.Key, "EM;Pusta wiadomosc");
+                    return;
+                }
+
+                switch (info[0])
+                {
+                    // 0: Season, 1: Add / Modify / Remove, 2: seasonID, {rest}
+                    case "Season":
+
+                        if (info.Length < 3)
+                        {
+                            Send(con, data.Key, "ND;Zbyt malo informacji");
+                            return;
+                        }
+
+                        int seasonID = int.Parse(info[2]);
+
+                        switch (info[1])
+                        {
+                            case "Add":
+                                WindWingAppServer.Season newSeason;
+                                if (info.Length > 3)
+                                {
+                                    newSeason = new WindWingAppServer.Season(info[3], seasonID);
+                                    newSeason.Log();
+                                }
+                                else
+                                {
+                                    newSeason = new WindWingAppServer.Season(seasonID, 0, false, "s" + seasonID + "_", WindWingAppServer.GetTrack(0), null);
+                                }
+                                server.AddSeason(newSeason);
+                                Send(con, data.Key, "OK");
+                                break;
+
+                            case "Modify":
+
+                                if(info.Length < 4)
+                                {
+                                    Send(con, data.Key, "ND;Zbyt malo informacji");
+                                    return;
+                                }
+
+                                var season = server.GetSeason(seasonID);
+                                if(season.ParseSeasonString(info[3]))
+                                {
+                                    Send(con, data.Key, "OK");
+                                    season.Log();
+                                    break;
+                                }
+                                Send(con, data.Key, "PE;Wystąpił błąd podczas przetwarzania żądania");
+                                return;
+
+                            default:
+                                Send(con, data.Key, "BT;Zły tag");
+                                return;
+                        }
+
+                        break;
+
+                    default:
+                        Send(con, data.Key, "NF;Nie znaleziono tagu");
+                        return;
+                }
+            }
+            catch(Exception e)
+            {
+                Debug.Exception(e, "[NetworkData.AdminRequest]");
+                Send(con, data.Key, "IE;Wewnętrzny błąd servera;" + e.ToString());
+            }
+        }
+
         void LoginTRequest(RawData data, Connection con)
         {
             try
@@ -249,6 +374,11 @@ namespace WindWingAppServer
 
                 Debug.Log("LoginT ok, sending: \"OK;" + user.login + "\"");
                 Send(con, data.Key, "OK;" + user.login + ";" + user.admin);
+
+                if(user.admin)
+                {
+                    con.RegisterRawDataHandler("Admin", AdminRequest);
+                }
             }
             catch (Exception e)
             {
@@ -285,6 +415,11 @@ namespace WindWingAppServer
 
                 Debug.Log("Login ok, sending: \"OK;" + user.login + "\"");
                 Send(con, data.Key, "OK;" + user.login + ";" + user.token.Replace(";", "\\:") + ";" + user.admin);
+
+                if (user.admin)
+                {
+                    con.RegisterRawDataHandler("Admin", AdminRequest);
+                }
             }
             catch(Exception e)
             {

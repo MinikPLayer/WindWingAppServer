@@ -25,6 +25,56 @@ public static class MUtil
         }
     }
 
+    /// <summary>
+    /// Splits string but without splitting when inside a bracket, formatting: entry1{data1},entry2{data2},entry3{data3}
+    /// </summary>
+    /// <param name="str"></param>
+    /// <returns></returns>
+    public static List<string> SplitWithBrackets(string str)
+    {
+        List<string> packets = new List<string>();
+        int level = 0;
+        string s = "";
+        for (int i = 0; i < str.Length; i++)
+        {
+            if (str[i] == ',' && level == 0)
+            {
+                packets.Add(s);
+                s = "";
+                continue;
+            }
+
+            s += str[i];
+            if (str[i] == '{')
+            {
+                level++;
+            }
+            else if (str[i] == '}')
+            {
+                level--;
+                if (level < 0)
+                {
+                    Debug.LogError("[WindWingApp.Season.ParseSeasonString] Not expected closing bracket");
+                    return null;
+                }
+            }
+
+        }
+
+        if (level != 0)
+        {
+            Debug.LogError("[WindWingApp.Season.ParseSeasonString] Cannot find closing bracket");
+            return null;
+        }
+
+        if (s.Length > 0)
+        {
+            packets.Add(s);
+        }
+
+        return packets;
+    }
+
     public static string GetStringToSpecialChar(string str, char specialChar)
     {
         string value = "";
