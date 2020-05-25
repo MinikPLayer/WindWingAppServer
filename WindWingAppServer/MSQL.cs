@@ -46,6 +46,8 @@ namespace WindWingAppServer
         }
 
 
+        string lastError = "";
+        bool error = false;
         bool sqlBusy = false;
         public string[] ExecuteCommand(string cmd, char separator = ';')
         {
@@ -82,7 +84,9 @@ namespace WindWingAppServer
             }
             catch(Exception e)
             {
-                Debug.Exception(e, "[MSQL.ExecuteCommand]");
+                Debug.Exception(e, "[MSQL.ExecuteCommand] Command: \"" + cmd + "\"");
+                error = true;
+                lastError = e.ToString();
             }
 
             sqlBusy = false;
@@ -142,8 +146,12 @@ namespace WindWingAppServer
 
         public class ColumnTime : ColumnType
         {
-            public ColumnTime() : base(typeof(bool), "TIME") { }
-            public override object GetValue(MySqlDataReader reader, int index) { return reader.GetTimeSpan(index); }
+            public ColumnTime() : base(typeof(bool), "INT") { }
+            public override object GetValue(MySqlDataReader reader, int index) 
+            {
+                //return reader.GetTimeSpan(index); 
+                return TimeSpan.FromMilliseconds(reader.GetInt32(index));
+            }
         }
 
         public class Column
@@ -241,7 +249,8 @@ namespace WindWingAppServer
             public Value(string name, TimeSpan value)
             {
                 this.name = name;
-                this.value = value.ToString();
+                this.value = ((int)value.TotalMilliseconds).ToString(); //value.ToString();
+
             }
         }
 
@@ -264,8 +273,18 @@ namespace WindWingAppServer
             }
         }
 
-        public void AddEntry(string table, List<Value> values)
+        public bool AddEntry(string table, List<Value> values)
         {
+            for(int i = 0;i<values.Count;i++)
+            {
+                if(values[i].value.Length == 0)
+                {
+                    values.RemoveAt(i);
+                    i--;
+                    break;
+                }
+            }
+
             string cmd = "INSERT INTO " + table + "(";
             for(int i = 0;i<values.Count;i++)
             {
@@ -293,6 +312,7 @@ namespace WindWingAppServer
             }
 
             ExecuteCommand(cmd);
+            return !error;
         }
 
         public void RemoveEntry(string table, Value value)

@@ -54,7 +54,7 @@ public static class MUtil
                 level--;
                 if (level < 0)
                 {
-                    Debug.LogError("[WindWingApp.Season.ParseSeasonString] Not expected closing bracket");
+                    Debug.LogError("[MUtil.SplitWithBrackets] Not expected closing bracket");
                     return null;
                 }
             }
@@ -63,7 +63,7 @@ public static class MUtil
 
         if (level != 0)
         {
-            Debug.LogError("[WindWingApp.Season.ParseSeasonString] Cannot find closing bracket");
+            Debug.LogError("[MUtil.SplitWithBrackets] Cannot find closing bracket");
             return null;
         }
 
@@ -126,9 +126,6 @@ public static class MUtil
                 return false;
             }
         }
-
-
-        return false;
 
     }
 

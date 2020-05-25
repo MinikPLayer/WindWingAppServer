@@ -7,16 +7,18 @@ using Network;
 using Network.Converter;
 using Network.Packets;
 
+using WindWingAppServer.Models;
+
 namespace WindWingAppServer
 {
     public class NetworkData
     {
-        List<WindWingAppServer.User> loggedIn = new List<WindWingAppServer.User>();
+        List<User> loggedIn = new List<User>();
 
         short port;
         WindWingAppServer server;
 
-        WindWingAppServer.User GetUser(Connection con)
+        User GetUser(Connection con)
         {
             for(int i = 0;i<loggedIn.Count;i++)
             {
@@ -103,7 +105,7 @@ namespace WindWingAppServer
                         break;
 
                     case "RD": // Registration Data
-                        WindWingAppServer.RegistrationData[] datas = server.GetRegistrationData();
+                        RegistrationData[] datas = server.GetRegistrationData();
 
                         if (datas.Length == 0)
                         {
@@ -127,27 +129,38 @@ namespace WindWingAppServer
                             return;
                         }
 
-                        if (info.Length == 3) // Users or races         TO DO
-                        {
-                            Send(connection, data.Key, "NI;Not implemented");
-                            for(int i = 0;i<info.Length;i++)
-                            {
-                                Debug.Log("\"" + info[i] + "\"");
-                            }
-                        }
-                        else if (info.Length == 2)
-                        {
-                            int seasonN = int.Parse(info[1]);
-                            var season = server.GetSeason(seasonN);
-                            if (season == null)
-                            {
-                                Send(connection, data.Key, "BS;Nie znaleziono sezonu o tym numerze");
-                                return;
-                            }
+                        User user = GetUser(connection);
 
-                            string str = "(" + season.id.ToString() + "," + season.racesCount + "," + season.users.Count + ")";
-                            Send(connection, data.Key, str);
+                        int seasonN = int.Parse(info[1]);
+                        var season = server.GetSeason(seasonN);
+                        if (season == null)
+                        {
+                            Send(connection, data.Key, "BS;Nie znaleziono sezonu o tym numerze");
+                            return;
                         }
+
+                        //string str = "(" + season.id.ToString() + "," + season.racesCount + "," + season.users.Count + ")";
+                        string str = season.Serialize();
+
+                        bool found = false;
+                        if (user != null)
+                        {
+                            for (int i = 0; i < season.users.Count; i++)
+                            {
+                                if (season.users[i].user == user)
+                                {
+                                    found = true;
+                                    str += ";True";
+                                    break;
+                                }
+                            }
+                            if(!found)
+                            {
+                                str += ";False";
+                            }
+                        }
+                            
+                        Send(connection, data.Key, str);
                         break;
 
                     default:
@@ -184,7 +197,7 @@ namespace WindWingAppServer
                 }
 
 
-                WindWingAppServer.User user = server.GetUser(info[0]);
+                User user = server.GetUser(info[0]);
                 if (user != null)
                 {
                     Send(con, data.Key, "UE;Uzytkownik o takiej nazwie juz istnieje");
@@ -226,7 +239,7 @@ namespace WindWingAppServer
         {
             try
             {
-                WindWingAppServer.User user = GetUser(con);
+                User user = GetUser(con);
                 if(user == null)
                 {
                     Send(con, data.Key, "NL;Uzytkownik nie jest zalogowany");
@@ -244,15 +257,28 @@ namespace WindWingAppServer
 
                 int seasonNmbr = int.Parse(info[0]);
 
-                WindWingAppServer.Season season = server.GetSeason(seasonNmbr);
+                Season season = server.GetSeason(seasonNmbr);
                 if(season == null)
                 {
                     Send(con, data.Key, "BS;Bledny numer sezonu");
                     return;
                 }
 
+                if(!season.registrationData.opened)
+                {
+                    Send(con, data.Key, "RC;Rejestracja do tego sezonu została już zamknięta");
+                    return;
+                }
 
-                
+                var sUser = server.AddSeasonUser(season, user, TimeSpan.Parse(info[1]), TimeSpan.Parse(info[2]), info[3], info[4]);
+
+                if(sUser == null)
+                {
+                    Send(con, data.Key, "IE;Błąd dodawania użytkownika, użytkownik prawdopodobnie już został zarejestrowany w tym sezonie");
+                    return;
+                }
+
+                Send(con, data.Key, "OK");
             }
             catch(Exception e)
             {
@@ -290,38 +316,41 @@ namespace WindWingAppServer
                             return;
                         }
 
-                        int seasonID = int.Parse(info[2]);
+                        
 
                         switch (info[1])
                         {
                             case "Add":
-                                WindWingAppServer.Season newSeason;
-                                if (info.Length > 3)
+                                // 0: Season, 1: Add, 2: serialized season
+                                Season newSeason = new Season(info[2]);
+                                //newSeason.Log();
+
+                                if(!newSeason.good)
                                 {
-                                    newSeason = new WindWingAppServer.Season(info[3], seasonID);
-                                    newSeason.Log();
+                                    Send(con, data.Key, "NG;Błąd przetwarzania sezonu");
+                                    Debug.Log("Season deserializing error, serialized string: \n" + info[2]);
+                                    return;
                                 }
-                                else
-                                {
-                                    newSeason = new WindWingAppServer.Season(seasonID, 0, false, "s" + seasonID + "_", WindWingAppServer.GetTrack(0), null);
-                                }
+
                                 server.AddSeason(newSeason);
                                 Send(con, data.Key, "OK");
                                 break;
 
                             case "Modify":
 
-                                if(info.Length < 4)
+                                int seasonID = int.Parse(info[2]);
+
+                                if (info.Length < 4)
                                 {
                                     Send(con, data.Key, "ND;Zbyt malo informacji");
                                     return;
                                 }
 
                                 var season = server.GetSeason(seasonID);
-                                if(season.ParseSeasonString(info[3]))
+                                if(season.Deserialize(info[3]))
                                 {
                                     Send(con, data.Key, "OK");
-                                    season.Log();
+                                    //season.Log();
                                     break;
                                 }
                                 Send(con, data.Key, "PE;Wystąpił błąd podczas przetwarzania żądania");
@@ -361,7 +390,7 @@ namespace WindWingAppServer
 
                 info[1] = info[1].Replace("\\:", ";");
 
-                WindWingAppServer.User user = server.GetUserByToken(info[0], info[1], false);
+                User user = server.GetUserByToken(info[0], info[1], false);
                 if (user == null)
                 {
                     Debug.Log("Bad credentials");
@@ -371,8 +400,6 @@ namespace WindWingAppServer
 
                 user.connection = con;
                 loggedIn.Add(user);
-
-                Debug.Log("LoginT ok, sending: \"OK;" + user.login + "\"");
                 Send(con, data.Key, "OK;" + user.login + ";" + user.admin);
 
                 if(user.admin)
@@ -402,7 +429,7 @@ namespace WindWingAppServer
 
                 info[1] = info[1].Replace("\\:", ";");
 
-                WindWingAppServer.User user = server.GetUser(info[0], info[1], false);
+                User user = server.GetUser(info[0], info[1], false);
                 if (user == null)
                 {
                     Debug.Log("Bad credentials");
@@ -412,8 +439,6 @@ namespace WindWingAppServer
 
                 user.connection = con;
                 loggedIn.Add(user);
-
-                Debug.Log("Login ok, sending: \"OK;" + user.login + "\"");
                 Send(con, data.Key, "OK;" + user.login + ";" + user.token.Replace(";", "\\:") + ";" + user.admin);
 
                 if (user.admin)
@@ -430,7 +455,24 @@ namespace WindWingAppServer
 
         void LeaderboardsDataRequested(RawData data, Connection con)
         {
-            Send(con, data.Key, server.GenerateLeaderboardsString());
+            try
+            {
+                string[] info = GetString(data).Split(';');
+
+                if (info.Length == 0)
+                {
+                    Debug.Log("Not enough information specified");
+                    Send(con, data.Key, "BP;Nie sprecyzowano wszystkich informacji");
+                    return;
+                }
+
+                Send(con, data.Key, server.GenerateLeaderboardsString(int.Parse(info[0])));
+            }
+            catch(Exception e)
+            {
+                Send(con, data.Key, "IE;Wewnętrzny błąd servera podczas przetwarzania żądania;" + e.ToString());
+                Debug.Exception(e, "[NetworkData.LeaderboardsDataRequested]");
+            }
             //con.SendRawData(RawDataConverter.FromUTF8String("Leaderboards", server.GenerateLeaderboardsString()));
         }
     }
