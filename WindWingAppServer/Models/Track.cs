@@ -42,7 +42,7 @@ namespace WindWingAppServer.Models
 
         public List<string> ToSQL()
         {
-            return new List<string>() { id.ToString(), name, country, city, length.ToString(), record.ToString() };
+            return new List<string>() { id.ToString(), name, country, city, length.ToString(), record.TotalMilliseconds.ToString() };
         }
 
         public static Track GetTrack(string country)

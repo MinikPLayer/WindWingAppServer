@@ -16,7 +16,7 @@ namespace WindWingAppServer.Models
         }
         public DateTime endDate;
 
-        public RegistrationData(bool opened, DateTime endTime)
+        public RegistrationData(DateTime endTime)
         {
             this.endDate = endTime;
         }

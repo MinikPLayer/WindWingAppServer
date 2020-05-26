@@ -46,8 +46,8 @@ namespace WindWingAppServer
         }
 
 
-        string lastError = "";
-        bool error = false;
+        public string lastError = "";
+        public bool error = false;
         bool sqlBusy = false;
         public string[] ExecuteCommand(string cmd, char separator = ';')
         {
@@ -108,13 +108,26 @@ namespace WindWingAppServer
             public abstract object GetValue(MySqlDataReader reader, int index); 
             public T GetValue<T>(MySqlDataReader reader, int index)
             {
-                if(type != typeof(T))
+                if(type != typeof(T) && typeof(T) != typeof(object))
                 {
                     Debug.LogError("[ColumnType.GetValue] Types missmatch");
                     return default;
                 }
 
-                return (T)GetValue(reader, index);
+                try
+                {
+                    return (T)GetValue(reader, index);
+                }
+                catch(InvalidCastException e)
+                {
+                    Debug.LogWarning("Entry is null");
+                    return default;
+                }
+                catch(Exception e)
+                {
+                    Debug.Exception(e, "[MSQL.GetValue<T>]");
+                    return default;
+                }
             }
 
             public static ColumnString STRING = new ColumnString();
@@ -171,7 +184,7 @@ namespace WindWingAppServer
             string cmd = "CREATE TABLE " + name + " (";
             for (int i = 0;i<columns.Count;i++)
             {
-                cmd += columns[i].name.Replace("\'", "\'\'") + " " + columns[i].type.sqlTypeStr + " NOT NULL";
+                cmd += columns[i].name.Replace("\'", "\'\'") + " " + columns[i].type.sqlTypeStr;
                 if (i != columns.Count - 1)
                 {
                     cmd += ',';
@@ -315,17 +328,22 @@ namespace WindWingAppServer
             return !error;
         }
 
-        public void RemoveEntry(string table, Value value)
+        public bool RemoveEntry(string table, Value value)
         {
             ExecuteCommand("DELETE FROM " + table + " WHERE " + value.name.Replace("\'", "\'\'") + " = " + value.value.Replace("\'", "\'\'"));
+            return !error;
         }
 
-        public void ModifyEntry(string table, Value value)
+        public void ModifyEntry(string table, Value value, string where = "")
         {
-            ExecuteCommand("UPDATE " + table + " SET " + value.name.Replace("\'", "\'\'") + " = " + value.value.Replace("\'", "\'\'") + ";");
+            if(where.Length > 0)
+            {
+                where = where.Insert(0, " WHERE ");
+            }
+            ExecuteCommand("UPDATE " + table + " SET " + value.name.Replace("\'", "\'\'") + " = " + value.value.Replace("\'", "\'\'") + where + ";");
         }
 
-        public void ModifyEntries(string table, List<Value> values)
+        public void ModifyEntries(string table, List<Value> values, string where = "")
         {
             string cmd = "UPDATE " + table + " SET ";
             for(int i = 0;i<values.Count;i++)
@@ -333,6 +351,10 @@ namespace WindWingAppServer
                 cmd += values[i].name.Replace("\'", "\'\'") + " = " + values[i].value.Replace("\'", "\'\'");
                 if(i == values.Count - 1)
                 {
+                    if(where.Length > 0)
+                    {
+                        cmd += " WHERE " + where;
+                    }
                     cmd += ';';
                 }
                 else
@@ -354,7 +376,7 @@ namespace WindWingAppServer
                 {
                     while (reader.Read())
                     {
-                        objects.Add((T)column.type.GetValue(reader, 0));
+                        objects.Add(column.type.GetValue<T>(reader, 0));
                     }
                 }
             }

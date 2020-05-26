@@ -7,8 +7,10 @@ namespace WindWingAppServer.Models
 {
     public class Race
     {
+        public int id;
         public DateTime date;
         public Track track;
+        public string resultsTable;
 
         public class Result
         {
@@ -26,12 +28,40 @@ namespace WindWingAppServer.Models
 
         public void LoadDefaults()
         {
+            this.id = -1;
             this.date = DateTime.MinValue;
             this.track = Track.GetTrack(0);
+
+            this.resultsTable = "";
+        }
+
+        public bool LoadFromSql(object[] data)
+        {
+            try
+            {
+                if (data.Length < 4)
+                {
+                    Debug.LogError("[Race.LoadFromSql] Not enough data to load from, found only " + data.Length + " columns");
+                    return false;
+                }
+
+                id = (int)data[0];
+                track = Track.GetTrack((int)data[1]);
+                date = (DateTime)data[2];
+                resultsTable = (string)data[3];
+
+                return true;
+            }
+            catch(Exception e)
+            {
+                Debug.Exception(e, "[Race.LoadFromSql]");
+                return false;
+            }
         }
 
         public void Log()
         {
+            Debug.Log("Race id: " + id.ToString());
             Debug.Log("Date: " + date.ToString(new CultureInfo("de-DE")));
             Debug.Log("Track: " + track.country);
         }
@@ -45,6 +75,25 @@ namespace WindWingAppServer.Models
         {
             LoadDefaults();
             Deserialize(raceString);
+        }
+
+        public Race(int id, int trackID, DateTime date, List<Result> results = null, string resultsTable = "")
+        {
+            this.id = id;
+            this.track = Track.GetTrack(trackID);
+            this.date = date;
+
+            this.results = results;
+
+            this.resultsTable = resultsTable;
+        }
+
+        public Race(int id, List<Result> results, string resultsTable = "")
+        {
+            this.id = id;
+            this.results = results;
+
+            this.resultsTable = resultsTable;
         }
 
         bool ParseSinglePacket(string header, string content)
@@ -139,18 +188,5 @@ namespace WindWingAppServer.Models
             return "race{" + track.Serialize() + ",date{" + date.ToString(new CultureInfo("de-DE")) + "}}";
         }
 
-
-        public Race(int trackID, DateTime date, List<Result> results = null)
-        {
-            this.track = Track.GetTrack(trackID);
-            this.date = date;
-
-            this.results = results;
-        }
-
-        public Race(List<Result> results)
-        {
-            this.results = results;
-        }
     }
 }

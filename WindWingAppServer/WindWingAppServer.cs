@@ -17,7 +17,7 @@ namespace WindWingAppServer
         const int version = 1;
 
 
-        public List<User> users = new List<User>();
+        //public List<User> users = new List<User>();
 
         public List<Season> seasons = new List<Season>();
 
@@ -41,6 +41,8 @@ namespace WindWingAppServer
             }
 
             season.users.Add(sUser);
+
+            sql.ModifyEntry("seasons", new MSQL.Value("userscount", season.users.Count), "id=" + season.id.ToString());
 
             return sUser;
         }
@@ -69,7 +71,7 @@ namespace WindWingAppServer
             workingWithUsers = true;
             sql.AddEntry("users", user.ToSqlValues());
             sql.ModifyEntry("dbinfo", new MSQL.Value("userscount", usersCount));
-            users.Add(user);
+            User.users.Add(user);
             workingWithUsers = false;
         }
 
@@ -89,13 +91,57 @@ namespace WindWingAppServer
 
         void AddUser(User user)
         {
-            users.Add(user);
+            User.users.Add(user);
         }
 
         public void AddSeason(Season s)
         {
             WriteSeasonTable(s);
             seasons.Add(s);
+        }
+
+        public bool RemoveSeason(int id)
+        {
+            int index = -1;
+            Season s = null;
+            for(int i = 0;i<seasons.Count;i++)
+            {
+                if(seasons[i].id == id)
+                {
+                    index = i;
+                    s = seasons[i];
+                }
+            }
+            if(s == null)
+            {
+                Debug.LogError("Season with id " + id.ToString() + " not found");
+                return false;
+            }
+
+            sql.RemoveEntry("seasons", new MSQL.Value("id", s.id));
+            if(s.prefix.Length == 0)
+            {
+                s.prefix = "s" + s.id.ToString() + "_";
+            }
+            if(sql.TableExists(s.prefix + "users"))
+            {
+                sql.DropTable(s.prefix + "users");
+            }
+            if(sql.TableExists(s.prefix + "races"))
+            {
+                sql.DropTable(s.prefix + "races");
+            }
+            if(sql.TableExists(s.prefix + "results"))
+            {
+                sql.DropTable(s.prefix + "results");
+            }
+
+            seasons.RemoveAt(index);
+
+            int count = sql.ReadEntry<int>("dbinfo", new MSQL.Column("seasonsCount", MSQL.ColumnType.INT))[0];
+            sql.ModifyEntry("dbinfo", new MSQL.Value("seasonsCount", count - 1));
+
+            return !sql.error;
         }
 
         User CreateUser(object[] data)
@@ -155,12 +201,13 @@ namespace WindWingAppServer
 
             string prefix = "s" + season.id.ToString() + "_";
              
-            string finishedStr = season.finished ? "1" : "0";
+
             sql.AddEntry("seasons", new List<MSQL.Value>() {
                 new MSQL.Value("id", season.id.ToString()),
+                new MSQL.Value("userscount", season.users.Count),
                 new MSQL.Value("prefix", prefix),
                 new MSQL.Value("racescount", season.racesCount),
-                new MSQL.Value("finished", season.finished),
+                new MSQL.Value("finishedraces", season.finishedRaces),
                 new MSQL.Value("registrationend", season.registrationData.endDate),
                 new MSQL.Value("timetrackid", season.registrationTrack.id)
             });
@@ -168,7 +215,7 @@ namespace WindWingAppServer
             int count = sql.ReadEntry<int>("dbinfo", new MSQL.Column("seasonsCount", MSQL.ColumnType.INT))[0];
             sql.ModifyEntry("dbinfo", new MSQL.Value("seasonsCount", count + 1));
 
-            sql.CreateTable("s" + season.id.ToString(), new List<MSQL.Column>() {
+            sql.CreateTable(prefix + "races", new List<MSQL.Column>() {
                 new MSQL.Column("id", MSQL.ColumnType.INT),
                 new MSQL.Column("trackid",  MSQL.ColumnType.INT),
                 new MSQL.Column("date",  MSQL.ColumnType.DATETIME),
@@ -190,7 +237,7 @@ namespace WindWingAppServer
             {
                 for (int i = 0; i < season.races.Count; i++)
                 {
-                    sql.AddEntry("s" + season.id.ToString(), new List<MSQL.Value>
+                    sql.AddEntry(prefix + "races", new List<MSQL.Value>
                     {
                         new MSQL.Value("id", i),
                         new MSQL.Value("trackid", season.races[i].track.id),
@@ -222,21 +269,21 @@ namespace WindWingAppServer
         {
             //WriteSeasonTable(1, 25, 12, true);
 
-            Season season = new Season(1, 12, true, "S1_", Track.GetTrack(0), new List<Race>
+            Season season = new Season(1, 12, 12, "S1_", Track.GetTrack(0), new List<Race>
             {
-                new Race(0, new DateTime(2020, 05, 04, 20,00,00)),
-                new Race(1, new DateTime(2020, 05, 05, 20,00,00)),
-                new Race(4, new DateTime(2020, 05, 06, 20,00,00)),
-                new Race(6, new DateTime(2020, 05, 07, 20,00,00)),
-                new Race(9, new DateTime(2020, 05, 08, 20,00,00)),
-                new Race(12, new DateTime(2020, 05, 11, 20,00,00)),
-                new Race(16, new DateTime(2020, 05, 12, 20,00,00)),
-                new Race(17, new DateTime(2020, 05, 13, 20,00,00)),
-                new Race(3, new DateTime(2020, 05, 14, 20,00,00)),
-                new Race(18, new DateTime(2020, 05, 18, 20,00,00)),
-                new Race(10, new DateTime(2020, 05, 19, 20,00,00)),
-                new Race(11, new DateTime(2020, 05, 20, 20,00,00))
-            }, new RegistrationData(false, DateTime.MinValue));
+                new Race(0, 0, new DateTime(2020, 05, 04, 20,00,00)),
+                new Race(1, 1, new DateTime(2020, 05, 05, 20,00,00)),
+                new Race(2, 4, new DateTime(2020, 05, 06, 20,00,00)),
+                new Race(3, 6, new DateTime(2020, 05, 07, 20,00,00)),
+                new Race(4, 9, new DateTime(2020, 05, 08, 20,00,00)),
+                new Race(5, 12, new DateTime(2020, 05, 11, 20,00,00)),
+                new Race(6, 16, new DateTime(2020, 05, 12, 20,00,00)),
+                new Race(7, 17, new DateTime(2020, 05, 13, 20,00,00)),
+                new Race(8, 3, new DateTime(2020, 05, 14, 20,00,00)),
+                new Race(9, 18, new DateTime(2020, 05, 18, 20,00,00)),
+                new Race(10, 10, new DateTime(2020, 05, 19, 20,00,00)),
+                new Race(11, 11, new DateTime(2020, 05, 20, 20,00,00))
+            }, new RegistrationData(DateTime.MinValue));
 
             season.registrationTrack = Track.GetTrack(0);
 
@@ -249,14 +296,14 @@ namespace WindWingAppServer
         {
             sql.CreateTable("dbinfo", new List<MSQL.Column>() { 
                 new MSQL.Column("version", MSQL.ColumnType.INT), 
-                new MSQL.Column("seasonsCount", MSQL.ColumnType.INT),
+                new MSQL.Column("seasonscount", MSQL.ColumnType.INT),
                 new MSQL.Column("userscount", MSQL.ColumnType.INT)
             });
             //sql.AddEntry("dbinfo", new List<string>() { "version", "seasonsCount" }, new List<string>() { version.ToString(), "0" });
             sql.AddEntry("dbinfo", new List<MSQL.Value>()
             {
                 new MSQL.Value("version", version.ToString()),
-                new MSQL.Value("seasonsCount", "0"),
+                new MSQL.Value("seasonscount", "0"),
                 new MSQL.Value("userscount", "0")
             });
 
@@ -283,7 +330,7 @@ namespace WindWingAppServer
                 new MSQL.Column("id", MSQL.ColumnType.INT),
                 new MSQL.Column("userscount", MSQL.ColumnType.INT),
                 new MSQL.Column("racescount", MSQL.ColumnType.INT),
-                new MSQL.Column("finished", MSQL.ColumnType.BOOLEAN),
+                new MSQL.Column("finishedraces", MSQL.ColumnType.INT),
                 new MSQL.Column("prefix", MSQL.ColumnType.STRING),
                 new MSQL.Column("registrationend", MSQL.ColumnType.DATETIME),
                 new MSQL.Column("timetrackid", MSQL.ColumnType.INT)
@@ -305,7 +352,7 @@ namespace WindWingAppServer
 
             WriteSeason1Data();
 
-            RegisterUser(CreateUser("Minik", "", "", "", "", true, ""));
+            //RegisterUser(CreateUser("Minik", "", "", "", "", true, ""));
         }
 
 
@@ -325,7 +372,7 @@ namespace WindWingAppServer
 
             if (objects.Count == 0) return;
 
-            List<object[]> uObjects = new List<object[]>(objects[0].Length);
+            /*List<object[]> uObjects = new List<object[]>(objects[0].Length);
             for(int i = 0;i<objects[0].Length; i++)
             {
                 object[] data = new object[objects.Count];
@@ -334,7 +381,8 @@ namespace WindWingAppServer
                     data[j] = objects[j][i];
                 }
                 uObjects.Add(data);
-            }
+            }*/
+            var uObjects = MUtil.FlipSQLData(objects);
             for(int i = 0;i<uObjects.Count;i++)
             {
                 User u = CreateUser(uObjects[i]);
@@ -342,9 +390,123 @@ namespace WindWingAppServer
             }
         }
 
+        bool LoadSeasonUsersFromDB(Season season)
+        {
+            if(season.users.Capacity == 0)
+            {
+                return true;
+            }
+
+            List<object[]> objects = sql.ReadEntries(season.prefix + "users", new List<MSQL.Column>
+            {
+                new MSQL.Column("id", MSQL.ColumnType.INT),
+                new MSQL.Column("lapdry", MSQL.ColumnType.TIME),
+                new MSQL.Column("lapwet", MSQL.ColumnType.TIME),
+                new MSQL.Column("lapdrylink", MSQL.ColumnType.STRING),
+                new MSQL.Column("lapwetlink", MSQL.ColumnType.STRING),
+                new MSQL.Column("priority", MSQL.ColumnType.INT)
+            });
+
+            List<object[]> uObjects = MUtil.FlipSQLData(objects);
+            for(int i = 0;i<uObjects.Count;i++)
+            {
+                Season.SeasonUser newUser = new Season.SeasonUser();
+                if(!newUser.LoadFromSql(uObjects[i]))
+                {
+                    Debug.LogError("[WindWingAppServer.LoadSeasonUsersFromDB] Error loading users");
+                    return false;
+                }
+
+                season.users.Add(newUser);
+            }
+
+            return true;
+        }
+
+        bool LoadSeasonRacesFromDB(Season season)
+        {
+            if(season.racesCount == 0)
+            {
+                return true;
+            }
+
+            List<object[]> objects = sql.ReadEntries(season.prefix + "races", new List<MSQL.Column>
+            {
+                new MSQL.Column("id", MSQL.ColumnType.INT),
+                new MSQL.Column("trackid", MSQL.ColumnType.INT),
+                new MSQL.Column("date", MSQL.ColumnType.DATETIME),
+                new MSQL.Column("resultstable", MSQL.ColumnType.STRING)
+            });
+
+            List<object[]> uObjects = MUtil.FlipSQLData(objects);
+            for(int i = 0;i<uObjects.Count;i++)
+            {
+                Race newRace = new Race();
+                if (!newRace.LoadFromSql(uObjects[i]))
+                {
+                    Debug.LogError("[WindWingAppServer.LoadSeasonRacesFromDB] Cannot load race " + i.ToString());
+                    return false;
+                }
+
+                season.races.Add(newRace);
+            }
+
+            return true;
+        }
+
+        bool LoadSeasonsFromDB()
+        {
+            try
+            {
+                List<object[]> objects = sql.ReadEntries("seasons", new List<MSQL.Column>
+                {
+                    new MSQL.Column("id", MSQL.ColumnType.INT),
+                    new MSQL.Column("userscount", MSQL.ColumnType.INT),
+                    new MSQL.Column("racescount", MSQL.ColumnType.INT),
+                    new MSQL.Column("finishedraces", MSQL.ColumnType.INT),
+                    new MSQL.Column("prefix", MSQL.ColumnType.STRING),
+                    new MSQL.Column("registrationend", MSQL.ColumnType.DATETIME),
+                    new MSQL.Column("timetrackid", MSQL.ColumnType.INT)
+                });
+
+                var uObjects = MUtil.FlipSQLData(objects);
+                for (int i = 0; i < uObjects.Count; i++)
+                {
+                    Season s = new Season(uObjects[i]);
+                    if (!s.good)
+                    {
+                        Debug.LogError("[WindWingAppServer.LoadSeasonsFromDB] Error loading season " + i + ", id: " + ((int)uObjects[i][0]).ToString());
+                        return false;
+                    }
+
+                    if(!LoadSeasonUsersFromDB(s))
+                    {
+                        Debug.LogError("[WindWingAppServer.LoadSeasonsFromDB] Cannot load season users");
+                        return false;
+                    }
+                    if(!LoadSeasonRacesFromDB(s))
+                    {
+                        Debug.LogError("[WindWingAppServer.LoadSeasonsFromDB] Cannot load season races");
+                        return false;
+                    }
+                    //s.Log();
+
+                    seasons.Add(s);
+                }
+
+                return true;
+            }
+            catch (Exception e)
+            {
+                Debug.Exception(e, "[WindWingAppServer.LoadSeasonFromDB]");
+                return false;
+            }
+        }
+
         void GetDBData()
         {
             LoadUsersFromDB();
+            LoadSeasonsFromDB();
         }
 
         public string GenerateLeaderboardsString(int season)
@@ -389,11 +551,11 @@ namespace WindWingAppServer
         public User GetUserNCS(string login)
         {
             login = login.ToLower();
-            for (int i = 0; i < users.Count; i++)
+            for (int i = 0; i < User.users.Count; i++)
             {
-                if (users[i].login.ToLower() == login)
+                if (User.users[i].login.ToLower() == login)
                 {
-                    return users[i];
+                    return User.users[i];
                 }
             }
             return null;
@@ -401,11 +563,11 @@ namespace WindWingAppServer
 
         public User GetUserCS(string login)
         {
-            for (int i = 0; i < users.Count; i++)
+            for (int i = 0; i < User.users.Count; i++)
             {
-                if (users[i].login == login)
+                if (User.users[i].login == login)
                 {
-                    return users[i];
+                    return User.users[i];
                 }
             }
             return null;
@@ -413,11 +575,11 @@ namespace WindWingAppServer
 
         public User GetUserByMail(string email)
         {
-            for (int i = 0; i < users.Count; i++)
+            for (int i = 0; i < User.users.Count; i++)
             {
-                if (users[i].email == email)
+                if (User.users[i].email == email)
                 {
-                    return users[i];
+                    return User.users[i];
                 }
             }
             return null;
@@ -425,11 +587,11 @@ namespace WindWingAppServer
 
         public User GetUserBySteam(string steam)
         {
-            for (int i = 0; i < users.Count; i++)
+            for (int i = 0; i < User.users.Count; i++)
             {
-                if (users[i].steam == steam)
+                if (User.users[i].steam == steam)
                 {
-                    return users[i];
+                    return User.users[i];
                 }
             }
             return null;
@@ -449,11 +611,11 @@ namespace WindWingAppServer
 
         public User GetUserByTokenCS(string login, string token)
         {
-            for (int i = 0; i < users.Count; i++)
+            for (int i = 0; i < User.users.Count; i++)
             {
-                if (users[i].login == login && users[i].token == token)
+                if (User.users[i].login == login && User.users[i].token == token)
                 {
-                    return users[i];
+                    return User.users[i];
                 }
             }
             return null;
@@ -463,11 +625,11 @@ namespace WindWingAppServer
         {
             login = login.ToLower();
 
-            for (int i = 0; i < users.Count; i++)
+            for (int i = 0; i < User.users.Count; i++)
             {
-                if (users[i].login.ToLower() == login && users[i].token == token)
+                if (User.users[i].login.ToLower() == login && User.users[i].token == token)
                 {
-                    return users[i];
+                    return User.users[i];
                 }
             }
             return null;
@@ -487,11 +649,11 @@ namespace WindWingAppServer
 
         public User GetUserCS(string login, string password)
         {
-            for(int i = 0;i<users.Count;i++)
+            for(int i = 0;i< User.users.Count;i++)
             {
-                if(users[i].login == login && users[i].password == password)
+                if(User.users[i].login == login && User.users[i].password == password)
                 {
-                    return users[i];
+                    return User.users[i];
                 }
             }
             return null;
@@ -500,20 +662,20 @@ namespace WindWingAppServer
         public User GetUserNCS(string login, string password)
         {
             login = login.ToLower();
-            for (int i = 0; i < users.Count; i++)
+            for (int i = 0; i < User.users.Count; i++)
             {
-                if (users[i].login.ToLower() == login && users[i].password == password)
+                if (User.users[i].login.ToLower() == login && User.users[i].password == password)
                 {
-                    return users[i];
+                    return User.users[i];
                 }
             }
             return null;
         }
 
-        const bool clear = true;
+        const bool clear = false;
         public WindWingAppServer(bool clearAllData = false)
         {
-            Debug.Log("Loading WindWingAppServer version 0.3b...");
+            Debug.Log("Loading WindWingAppServer version 0.5...");
 
             sql = new MSQL("localhost", "WindWingApp", "windWingStrongPass", "WindWingApp");
 
@@ -565,16 +727,19 @@ namespace WindWingAppServer
                 {
                     case "setadmin":
                         User u = GetUser(parts[1]);
-                        u.admin = true;
+                        
                         if(parts.Length > 2 && parts[2] == "0")
                         {
+                            u.admin = false;
                             sql.ExecuteCommand("UPDATE users SET admin=false WHERE id=" + u.id.ToString());
                         }
                         else
                         {
+                            u.admin = true;
                             sql.ExecuteCommand("UPDATE users SET admin=true WHERE id=" + u.id.ToString());
                         }
-                        
+
+                        Debug.Log("User " + u.login + " is now an admin");
                         break;
 
                     default:

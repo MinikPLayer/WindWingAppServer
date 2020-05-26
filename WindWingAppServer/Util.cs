@@ -99,7 +99,7 @@ public static class MUtil
     {
         strToSpecialChar = GetStringToSpecialChar(str, specialChar);
 
-        if(strToSpecialChar.Length >= str.Length)
+        if (strToSpecialChar.Length >= str.Length)
         {
             return "";
         }
@@ -117,16 +117,34 @@ public static class MUtil
             Console.ForegroundColor = orColor;
 
             ConsoleKeyInfo info = Console.ReadKey();
-            if(info.Key == ConsoleKey.Y)
+            if (info.Key == ConsoleKey.Y)
             {
                 return true;
             }
-            if(info.Key == ConsoleKey.N)
+            if (info.Key == ConsoleKey.N)
             {
                 return false;
             }
         }
 
+    }
+
+    public static List<object[]> FlipSQLData(List<object[]> objects)
+    {
+        if (objects.Count == 0) return new List<object[]>();
+
+        List<object[]> uObjects = new List<object[]>(objects[0].Length);
+        for(int i = 0;i<objects[0].Length; i++)
+        {
+            object[] data = new object[objects.Count];
+            for(int j = 0;j<objects.Count;j++)
+            {
+                data[j] = objects[j][i];
+            }
+            uObjects.Add(data);
+        }
+
+        return uObjects;
     }
 
     public static List<string> RemoveEmptyLines(List<string> lines, bool removeAlsoNLandCR = true)

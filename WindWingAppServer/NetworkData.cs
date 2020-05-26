@@ -100,6 +100,28 @@ namespace WindWingAppServer
             {
                 switch (info[0])
                 {
+                    case "UD": // User data
+                        {
+                            if (info.Length < 2)
+                            {
+                                Send(connection, data.Key, "BP;Brak wystarczajacej ilosci parametrow");
+                                return;
+                            }
+                            User user = GetUser(connection);
+                            if (user == null)
+                            {
+                                Send(connection, data.Key, "NL;Musisz być zalogowanym aby otrzymać takie informacje");
+                                return;
+                            }
+
+                            int userID = int.Parse(info[1]);
+
+                            User target = User.GetUser(userID);
+
+                            Send(connection, data.Key, "OK;" + target.Serialize());
+                            break;
+                        }
+
                     case "SC": // Seasons Count
                         Send(connection, data.Key, server.seasons.Count.ToString());
                         break;
@@ -123,45 +145,47 @@ namespace WindWingAppServer
                         break;
 
                     case "SD": // Season data
-                        if (info.Length < 2)
                         {
-                            Send(connection, data.Key, "BP;Brak wystarczajacej ilosci parametrow");
-                            return;
-                        }
-
-                        User user = GetUser(connection);
-
-                        int seasonN = int.Parse(info[1]);
-                        var season = server.GetSeason(seasonN);
-                        if (season == null)
-                        {
-                            Send(connection, data.Key, "BS;Nie znaleziono sezonu o tym numerze");
-                            return;
-                        }
-
-                        //string str = "(" + season.id.ToString() + "," + season.racesCount + "," + season.users.Count + ")";
-                        string str = season.Serialize();
-
-                        bool found = false;
-                        if (user != null)
-                        {
-                            for (int i = 0; i < season.users.Count; i++)
+                            if (info.Length < 2)
                             {
-                                if (season.users[i].user == user)
+                                Send(connection, data.Key, "BP;Brak wystarczajacej ilosci parametrow");
+                                return;
+                            }
+
+                            User user = GetUser(connection);
+
+                            int seasonN = int.Parse(info[1]);
+                            var season = server.GetSeason(seasonN);
+                            if (season == null)
+                            {
+                                Send(connection, data.Key, "BS;Nie znaleziono sezonu o tym numerze");
+                                return;
+                            }
+
+                            //string str = "(" + season.id.ToString() + "," + season.racesCount + "," + season.users.Count + ")";
+                            string str = season.Serialize();
+
+                            bool found = false;
+                            if (user != null)
+                            {
+                                for (int i = 0; i < season.users.Count; i++)
                                 {
-                                    found = true;
-                                    str += ";True";
-                                    break;
+                                    if (season.users[i].user == user)
+                                    {
+                                        found = true;
+                                        str += ";True";
+                                        break;
+                                    }
+                                }
+                                if (!found)
+                                {
+                                    str += ";False";
                                 }
                             }
-                            if(!found)
-                            {
-                                str += ";False";
-                            }
+
+                            Send(connection, data.Key, str);
+                            break;
                         }
-                            
-                        Send(connection, data.Key, str);
-                        break;
 
                     default:
                         Send(connection, data.Key, "UR;Nieznany tag info");
@@ -337,24 +361,40 @@ namespace WindWingAppServer
                                 break;
 
                             case "Modify":
-
-                                int seasonID = int.Parse(info[2]);
-
-                                if (info.Length < 4)
                                 {
-                                    Send(con, data.Key, "ND;Zbyt malo informacji");
+                                    int seasonID = int.Parse(info[2]);
+
+                                    if (info.Length < 4)
+                                    {
+                                        Send(con, data.Key, "ND;Zbyt malo informacji");
+                                        return;
+                                    }
+
+                                    var season = server.GetSeason(seasonID);
+                                    if (season.Deserialize(info[3]))
+                                    {
+                                        Send(con, data.Key, "OK");
+                                        //season.Log();
+                                        break;
+                                    }
+                                    Send(con, data.Key, "PE;Wystąpił błąd podczas przetwarzania żądania");
                                     return;
                                 }
 
-                                var season = server.GetSeason(seasonID);
-                                if(season.Deserialize(info[3]))
+                            case "Remove":
                                 {
+                                    int seasonID = int.Parse(info[2]);
+
+                                    if(!server.RemoveSeason(seasonID))
+                                    {
+                                        Send(con, data.Key, "UE;Nienzany błąd przy usuwaniu sezonu");
+                                        return;
+                                    }
+
                                     Send(con, data.Key, "OK");
-                                    //season.Log();
-                                    break;
+
+                                    return;
                                 }
-                                Send(con, data.Key, "PE;Wystąpił błąd podczas przetwarzania żądania");
-                                return;
 
                             default:
                                 Send(con, data.Key, "BT;Zły tag");
