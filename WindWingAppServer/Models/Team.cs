@@ -35,6 +35,24 @@ namespace WindWingAppServer.Models
             return data;
         }
 
+        public static Team GetTeam(int id)
+        {
+            if (id < 0 || id >= teams.Length) return null;
+            return teams[id];
+        }
+
+        public static Team GetTeam(string name)
+        {
+            for(int i = 0;i<teams.Length;i++)
+            {
+                if(teams[i].name == name)
+                {
+                    return teams[i];
+                }
+            }
+            return null;
+        }
+
         public static Team[] teams = new Team[] {
             new Team(0, "Mercedes", "MER", ""),
             new Team(1, "Ferrari", "FER", ""),

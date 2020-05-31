@@ -95,7 +95,7 @@ namespace WindWingAppServer.Models
                 new Track(17, "Autódromo Hermanos Rodríguez", "Meksyk", "Mexico City", 4304),
                 new Track(18, "Circuit of the Americas", "USA", "Austin", 5513),
                 new Track(19, "Autódromo José Carlos Pace", "Brazylia", "Sao Paulo", 4309),
-                new Track(20, "Yas Marina Circuit", "Zjedoczone Emiraty Arabskie", "Abu Dhabi", 5554)
+                new Track(20, "Yas Marina Circuit", "Abu Dhabi", "Abu Dhabi", 5554)
         };
     }
 }

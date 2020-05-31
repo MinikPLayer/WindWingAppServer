@@ -15,6 +15,8 @@ namespace WindWingAppServer.Models
             public string lapDryLink;
             public string lapWetLink;
             public int priority;
+            public Team team;
+            public Team[] prefferedTeams;
 
             public void LoadDefaults()
             {
@@ -23,6 +25,13 @@ namespace WindWingAppServer.Models
                 this.lapDryLink = "";
                 this.lapWetLink = "";
                 this.priority = int.MaxValue;
+
+                this.team = Team.GetTeam("Other");
+                this.prefferedTeams = new Team[3];
+                for(int i = 0;i<prefferedTeams.Length;i++)
+                {
+                    this.prefferedTeams[i] = Team.GetTeam("Other");
+                }
             }
 
             public void Log()
@@ -39,14 +48,17 @@ namespace WindWingAppServer.Models
 
             public SeasonUser(User user)
             {
+                LoadDefaults();
                 this.user = user;
             }
 
-            public SeasonUser(User user, TimeSpan lapDry, TimeSpan lapWet, string lapDryLink, string lapWetLink, int priority = int.MaxValue)
+            public SeasonUser(User user, TimeSpan lapDry, TimeSpan lapWet, string lapDryLink, string lapWetLink, Team team1, Team team2, Team team3, int priority = int.MaxValue)
             {
+                LoadDefaults();
+
                 this.user = user;
 
-                FillVariables(lapDry, lapWet, lapDryLink, lapWetLink, priority);
+                FillVariables(lapDry, lapWet, lapDryLink, lapWetLink, team1, team2, team3, priority);
             }
 
             bool ParseSinglePacket(string header, string content)
@@ -73,6 +85,22 @@ namespace WindWingAppServer.Models
 
                         case "lapWetLink":
                             lapWetLink = content;
+                            return true;
+
+                        case "team":
+                            team = Team.GetTeam(int.Parse(content));
+                            return true;
+
+                        case "team1":
+                            prefferedTeams[0] = Team.GetTeam(int.Parse(content));
+                            return true;
+
+                        case "team2":
+                            prefferedTeams[1] = Team.GetTeam(int.Parse(content));
+                            return true;
+
+                        case "team3":
+                            prefferedTeams[2] = Team.GetTeam(int.Parse(content));
                             return true;
 
                         default:
@@ -134,23 +162,26 @@ namespace WindWingAppServer.Models
 
             public string Serialize()
             {
-                return "seasonUser{id{" + user.id.ToString() + "},lapDry{" + lapDry.ToString("mm':'ss':'fff") + "},lapWet{" + lapWet.ToString("mm':'ss':'fff") + "},lapDryLink{" + lapDryLink + "},lapWetLink{" + lapWetLink + "}}";
+                return "seasonUser{id{" + user.id.ToString() + "},lapDry{" + lapDry.ToString("mm':'ss':'fff") + "},lapWet{" + lapWet.ToString("mm':'ss':'fff") + "},lapDryLink{" + lapDryLink + "},lapWetLink{" + lapWetLink + "},team{" + team.id.ToString() + "},team1{" + prefferedTeams[0].id + "},team2{" + prefferedTeams[1].id + "},team3{" + prefferedTeams[2].id + "}}";
             }
 
-            public void FillVariables(TimeSpan lapDry, TimeSpan lapWet, string lapDryLink, string lapWetLink, int priority = int.MaxValue)
+            public void FillVariables(TimeSpan lapDry, TimeSpan lapWet, string lapDryLink, string lapWetLink, Team team1, Team team2, Team team3, int priority = int.MaxValue)
             {
                 this.lapDry = lapDry;
                 this.lapWet = lapWet;
                 this.lapDryLink = lapDryLink;
                 this.lapWetLink = lapWetLink;
                 this.priority = priority;
+                this.prefferedTeams[0] = team1;
+                this.prefferedTeams[1] = team2;
+                this.prefferedTeams[2] = team3;
             }
 
             public bool LoadFromSql(object[] data)
             {
                 try
                 {
-                    if (data.Length < 5)
+                    if (data.Length < 10)
                     {
                         Debug.LogError("[User.LoadFromSqlSeason] Not enough data to load from, found only " + data.Length + " columns");
                     }
@@ -161,6 +192,11 @@ namespace WindWingAppServer.Models
                     lapDryLink = (string)data[3];
                     lapWetLink = (string)data[4];
                     priority = (int)data[5];
+                    team = Team.GetTeam((int)data[6]);
+                    prefferedTeams = new Team[3];
+                    prefferedTeams[0] = Team.GetTeam((int)data[7]);
+                    prefferedTeams[1] = Team.GetTeam((int)data[8]);
+                    prefferedTeams[2] = Team.GetTeam((int)data[9]);
 
                     return true;
                 }
@@ -179,7 +215,11 @@ namespace WindWingAppServer.Models
                         new MSQL.Value("lapwet", lapWet),
                         new MSQL.Value("lapdrylink", lapDryLink),
                         new MSQL.Value("lapwetlink", lapWetLink),
-                        new MSQL.Value("priority", priority)
+                        new MSQL.Value("priority", priority),
+                        new MSQL.Value("team", team.id),
+                        new MSQL.Value("pteam1", prefferedTeams[0].id),
+                        new MSQL.Value("pteam2", prefferedTeams[1].id),
+                        new MSQL.Value("pteam3", prefferedTeams[2].id)
                     };
             }
         }
@@ -383,7 +423,7 @@ namespace WindWingAppServer.Models
             }
         }
 
-        public string Serialize()
+        public string Serialize(bool includeUsers = false, User singleUser = null)
         {
             string str = "Season{";
 
@@ -408,21 +448,46 @@ namespace WindWingAppServer.Models
                 str += "}";
             }
 
-            if(users.Count > 0)
+            if(includeUsers)
             {
-                str += ",users{";
-
-                for(int i = 0;i<users.Count;i++)
+                if(users.Count > 0)
                 {
-                    str += users[i].Serialize();
-                    if(i != users.Count - 1)
-                    {
-                        str += ',';
-                    }
-                }
+                    str += ",users{";
 
-                str += "}";
+                    for(int i = 0;i<users.Count;i++)
+                    {
+                        str += users[i].Serialize();
+                        if(i != users.Count - 1)
+                        {
+                            str += ',';
+                        }
+                    }
+
+                    str += "}";
+                }
             }
+            else if(singleUser != null)
+            {
+                if (users.Count > 0)
+                {
+                    str += ",users{";
+
+                    for (int i = 0; i < users.Count; i++)
+                    {
+                        if (users[i].user.id == singleUser.id)
+                        {
+                            str += users[i].Serialize();
+                            if (i != users.Count - 1)
+                            {
+                                str += ',';
+                            }
+                        }
+                    }
+
+                    str += "}";
+                }
+            }
+
 
             return str + "}";
         }

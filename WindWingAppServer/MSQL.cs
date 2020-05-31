@@ -179,6 +179,11 @@ namespace WindWingAppServer
             }
         }
 
+        public void CopyTable(string name, string newName)
+        {
+            ExecuteCommand("CREATE TABLE " + newName + " LIKE " + name + ";INSERT INTO " + newName + " SELECT * FROM " + name + ";");
+        }
+
         public void CreateTable(string name, List<Column> columns)
         {
             string cmd = "CREATE TABLE " + name + " (";
@@ -348,7 +353,7 @@ namespace WindWingAppServer
             string cmd = "UPDATE " + table + " SET ";
             for(int i = 0;i<values.Count;i++)
             {
-                cmd += values[i].name.Replace("\'", "\'\'") + " = " + values[i].value.Replace("\'", "\'\'");
+                cmd += values[i].name.Replace("\'", "\'\'") + " = " + "\'" + values[i].value.Replace("\'", "\'\'") + "\'";
                 if(i == values.Count - 1)
                 {
                     if(where.Length > 0)

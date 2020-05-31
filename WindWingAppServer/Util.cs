@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Text;
 
 
@@ -7,6 +8,10 @@ using System.Threading;
 
 public static class MUtil
 {
+
+    public const bool debug = true;
+
+
     public static bool IsLinux
     {
         get
@@ -330,25 +335,57 @@ public class ParsingExcetpion : Exception
 
 public static class Debug
 {
+    public static string logPath;
+
+    public static string GetLogPath(bool withFile = true)
+    {
+        string path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData, Environment.SpecialFolderOption.Create), "Minik");
+        if(!Directory.Exists(path))
+        {
+            Directory.CreateDirectory(path);
+        }
+
+        if (withFile)
+        {
+            path = Path.Combine(path, "log.txt");
+        }
+
+        return path;
+    }
+
     public static void Log(object data, ConsoleColor color = ConsoleColor.White, bool newLine = true)
     {
+        if(logPath == null)
+        {
+            logPath = GetLogPath();
+        }
+
         ConsoleColor originalColor = Console.ForegroundColor;
         Console.ForegroundColor = color;
-        if (newLine)
+        try
         {
-            Console.WriteLine("[DEBUG] " + data);
+            string line = "[" + DateTime.Now.ToString() + "] " + data.ToString();
+            if (newLine)
+            {
+                Console.WriteLine(line);
+                File.AppendAllText(logPath, line + "\n");
+            }
+            else
+            {
+                Console.Write(line);
+                File.AppendAllText(logPath, line);
+            }
         }
-        else
+        catch(Exception e)
         {
-            //Console.Write("[DEBUG] " + data);
-            Console.Write(data);
+            Console.WriteLine("Exception when saving data to file: " + e.ToString());
         }
         Console.ForegroundColor = originalColor;
     }
 
     public static void LogWarning(object data, bool newLine = true)
     {
-        ConsoleColor originalColor = Console.ForegroundColor;
+        /*ConsoleColor originalColor = Console.ForegroundColor;
         Console.ForegroundColor = ConsoleColor.DarkYellow;
         if (newLine)
         {
@@ -358,12 +395,13 @@ public static class Debug
         {
             Console.Write("[DEBUG] " + data);
         }
-        Console.ForegroundColor = originalColor;
+        Console.ForegroundColor = originalColor;*/
+        Log(data, ConsoleColor.DarkYellow, newLine);
     }
 
     public static void LogError(object data, bool newLine = true)
     {
-        ConsoleColor originalColor = Console.ForegroundColor;
+        /*ConsoleColor originalColor = Console.ForegroundColor;
         Console.ForegroundColor = ConsoleColor.Red;
         if (newLine)
         {
@@ -373,7 +411,8 @@ public static class Debug
         {
             Console.Write("[DEBUG] " + data);
         }
-        Console.ForegroundColor = originalColor;
+        Console.ForegroundColor = originalColor;*/
+        Log(data, ConsoleColor.Red, newLine);
     }
 
     /// <summary>

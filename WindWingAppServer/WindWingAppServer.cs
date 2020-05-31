@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Text;
 
 using System.Threading;
@@ -14,37 +15,61 @@ namespace WindWingAppServer
         MSQL sql;
         NetworkData networkData;
 
-        const int version = 1;
-
+        public const int protocolVersion = 2;
+        public static int appLatestVersion = 52;
 
         //public List<User> users = new List<User>();
 
         public List<Season> seasons = new List<Season>();
 
-        int usersCount = 0;
 
-        public Season.SeasonUser AddSeasonUser(Season season, User user, TimeSpan timeDry, TimeSpan timeWet, string dryLink, string wetLink)
+        public Season.SeasonUser AddSeasonUser(Season season, User user, TimeSpan timeDry, TimeSpan timeWet, string dryLink, string wetLink, Team team1, Team team2, Team team3)
         {
-            var sUser = new Season.SeasonUser(user, timeDry, timeWet, dryLink, wetLink);
-
-            for(int i = 0;i<season.users.Count;i++)
+            try
             {
-                if(season.users[i].user.id == user.id)
+                var sUser = new Season.SeasonUser(user, timeDry, timeWet, dryLink, wetLink, team1, team2, team3);
+
+                for (int i = 0; i < season.users.Count; i++)
                 {
+                    if (season.users[i].user.id == user.id)
+                    {
+                        if (!sql.RemoveEntry(season.prefix + "users", new MSQL.Value("id", sUser.user.id)))
+                        {
+                            Debug.LogError("[WindWingAppServer.AddSeasonUser] User exists - Error deleting season user data");
+                            return null;
+                        }
+
+                        if (!sql.AddEntry(season.prefix + "users", sUser.ToSqlValues()))
+                        {
+                            Debug.LogError("[WindWingAppServer.AddSeasonUser] User exists - Error adding season user data");
+                            return null;
+                        }
+
+                        season.users[i] = sUser;
+
+                        return sUser;
+                    }
+                }
+
+                if (!sql.AddEntry(season.prefix + "users", sUser.ToSqlValues()))
+                {
+                    Debug.LogError("[WindWingAppServer.AddSeasonUser] Error adding season user data");
                     return null;
                 }
-            }
 
-            if(!sql.AddEntry(season.prefix + "users", sUser.ToSqlValues()))
+                season.users.Add(sUser);
+
+                sql.ModifyEntry("seasons", new MSQL.Value("userscount", season.users.Count), "id=" + season.id.ToString());
+
+                return sUser;
+
+
+            }
+            catch(Exception e)
             {
+                Debug.Exception(e, "[WindWingAppServer.AddSeasonUser]");
                 return null;
             }
-
-            season.users.Add(sUser);
-
-            sql.ModifyEntry("seasons", new MSQL.Value("userscount", season.users.Count), "id=" + season.id.ToString());
-
-            return sUser;
         }
 
         public RegistrationData[] GetRegistrationData()
@@ -62,17 +87,29 @@ namespace WindWingAppServer
         }
 
         bool workingWithUsers = false;
-        public void RegisterUser(User user)
+        public bool RegisterUser(User user)
         {
-            while(workingWithUsers)
+            try
             {
-                Thread.Sleep(10);
+                while (workingWithUsers)
+                {
+                    Thread.Sleep(10);
+                }
+                workingWithUsers = true;
+                //sql.ModifyEntry("dbinfo", new MSQL.Value("userscount", usersCount));
+                int count = sql.ReadEntry<int>("dbinfo", new MSQL.Column("userscount", MSQL.ColumnType.INT))[0];
+                Debug.Log("User id: " + user.id);
+                sql.AddEntry("users", user.ToSqlValues());
+                sql.ModifyEntry("dbinfo", new MSQL.Value("userscount", count + 1));
+                User.users.Add(user);
+                workingWithUsers = false;
+                return true;
             }
-            workingWithUsers = true;
-            sql.AddEntry("users", user.ToSqlValues());
-            sql.ModifyEntry("dbinfo", new MSQL.Value("userscount", usersCount));
-            User.users.Add(user);
-            workingWithUsers = false;
+            catch(Exception e)
+            {
+                Debug.Exception(e, "[WindWingAppServer.RegisterUser]");
+                return false;
+            }
         }
 
         void RewriteUser(User user)
@@ -144,6 +181,11 @@ namespace WindWingAppServer
             return !sql.error;
         }
 
+        public bool UpdateSeasonSql(Season s)
+        {
+            return WriteSeasonTable(s, true);
+        }
+
         User CreateUser(object[] data)
         {
             User u = new User();
@@ -167,6 +209,42 @@ namespace WindWingAppServer
             return val;
         }
 
+        List<int> reservedIDs = new List<int>();
+        bool generatingIDs = false;
+        int GenerateUserID()
+        {
+            while(generatingIDs)
+            {
+                Thread.Sleep(10);
+            }
+            generatingIDs = true;
+
+            int id = -1;
+            while (true)
+            {
+                id = new Random().Next();
+                User u = User.GetUser(id);
+                if(u != null)
+                {
+                    continue;
+                }
+
+                for(int i = 0;i<reservedIDs.Count;i++)
+                {
+                    if(reservedIDs[i] == id)
+                    {
+                        continue;
+                    }
+                }
+                break;
+            }
+
+            reservedIDs.Add(id);
+            generatingIDs = false;
+
+            return id;
+        }
+
         public User CreateUser(string login, string password, string email, string steam, string ip, bool admin = false, string token = null)
         {
             if(token == null)
@@ -174,11 +252,14 @@ namespace WindWingAppServer
                 token = GenerateToken();
             }
 
-            return new User(usersCount++, login, password, token, email, steam, ip, admin);
+            return new User(GenerateUserID(), login, password, token, email, steam, ip, admin);
         }
 
         bool WriteSeasonTable(Season season, bool overwrite = false)//int season, int usersCount, int racesCount, bool finished, bool overwrite = false)
         {
+            bool overwritten = false;
+            string prefix = "s" + season.id.ToString() + "_";
+
             Debug.Log("Seasons found: ");
             object[] ids = sql.ReadEntry("seasons", new MSQL.Column("id", MSQL.ColumnType.INT)); //new List<string>() { "id" }, new List<MSQL.ColumnType>() { MSQL.ColumnType.INT });
             for(int i = 0;i<ids.Length;i++)
@@ -189,7 +270,37 @@ namespace WindWingAppServer
                     if (overwrite)
                     {
                         Debug.LogWarning("[WWAS.WriteSeasonTable] Season with id " + season + " already found");
-                        sql.RemoveEntry("seasons", new MSQL.Value("id", season.id));
+                        //sql.RemoveEntry("seasons", new MSQL.Value("id", season.id));
+                        sql.ModifyEntries("seasons", new List<MSQL.Value>
+                        {
+                            new MSQL.Value("id", season.id.ToString()),
+                            new MSQL.Value("userscount", season.users.Count),
+                            new MSQL.Value("prefix", prefix),
+                            new MSQL.Value("racescount", season.racesCount),
+                            new MSQL.Value("finishedraces", season.finishedRaces),
+                            new MSQL.Value("registrationend", season.registrationData.endDate),
+                            new MSQL.Value("timetrackid", season.registrationTrack.id)
+                        }, "id=" + season.id.ToString());
+                        overwritten = true;
+
+                        if(sql.TableExists(prefix + "users"))
+                        {
+                            if(sql.TableExists(prefix + "users_bak"))
+                            {
+                                sql.DropTable(prefix + "users_bak");
+                            }
+                            sql.CopyTable(prefix + "users", prefix + "users_bak");
+                            sql.DropTable(prefix + "users");
+                        }
+                        if(sql.TableExists(prefix + "races"))
+                        {
+                            if (sql.TableExists(prefix + "races_bak"))
+                            {
+                                sql.DropTable(prefix + "races_bak");
+                            }
+                            sql.CopyTable(prefix + "races", prefix + "races_bak");
+                            sql.DropTable(prefix + "races");
+                        }
                     }
                     else
                     {
@@ -199,21 +310,23 @@ namespace WindWingAppServer
                 }
             }
 
-            string prefix = "s" + season.id.ToString() + "_";
-             
+            
 
-            sql.AddEntry("seasons", new List<MSQL.Value>() {
-                new MSQL.Value("id", season.id.ToString()),
-                new MSQL.Value("userscount", season.users.Count),
-                new MSQL.Value("prefix", prefix),
-                new MSQL.Value("racescount", season.racesCount),
-                new MSQL.Value("finishedraces", season.finishedRaces),
-                new MSQL.Value("registrationend", season.registrationData.endDate),
-                new MSQL.Value("timetrackid", season.registrationTrack.id)
-            });
+            if (!overwritten)
+            {
+                sql.AddEntry("seasons", new List<MSQL.Value>() {
+                    new MSQL.Value("id", season.id.ToString()),
+                    new MSQL.Value("userscount", season.users.Count),
+                    new MSQL.Value("prefix", prefix),
+                    new MSQL.Value("racescount", season.racesCount),
+                    new MSQL.Value("finishedraces", season.finishedRaces),
+                    new MSQL.Value("registrationend", season.registrationData.endDate),
+                    new MSQL.Value("timetrackid", season.registrationTrack.id)
+                });
 
-            int count = sql.ReadEntry<int>("dbinfo", new MSQL.Column("seasonsCount", MSQL.ColumnType.INT))[0];
-            sql.ModifyEntry("dbinfo", new MSQL.Value("seasonsCount", count + 1));
+                int count = sql.ReadEntry<int>("dbinfo", new MSQL.Column("seasonsCount", MSQL.ColumnType.INT))[0];
+                sql.ModifyEntry("dbinfo", new MSQL.Value("seasonsCount", count + 1));
+            }
 
             sql.CreateTable(prefix + "races", new List<MSQL.Column>() {
                 new MSQL.Column("id", MSQL.ColumnType.INT),
@@ -229,9 +342,25 @@ namespace WindWingAppServer
                 new MSQL.Column("lapwet", MSQL.ColumnType.TIME),
                 new MSQL.Column("lapdrylink", MSQL.ColumnType.STRING),
                 new MSQL.Column("lapwetlink", MSQL.ColumnType.STRING),
-                new MSQL.Column("priority", MSQL.ColumnType.TIME)
+                new MSQL.Column("priority", MSQL.ColumnType.TIME),
+                new MSQL.Column("team", MSQL.ColumnType.INT),
+                new MSQL.Column("pteam1", MSQL.ColumnType.INT),
+                new MSQL.Column("pteam2", MSQL.ColumnType.INT),
+                new MSQL.Column("pteam3", MSQL.ColumnType.INT)
             });
 
+
+            try
+            {
+                for (int i = 0; i < season.users.Count; i++)
+                {
+                    sql.AddEntry(prefix + "users", season.users[i].ToSqlValues());
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.Exception(e, "Error adding season users: ");
+            }
 
             try
             {
@@ -302,7 +431,7 @@ namespace WindWingAppServer
             //sql.AddEntry("dbinfo", new List<string>() { "version", "seasonsCount" }, new List<string>() { version.ToString(), "0" });
             sql.AddEntry("dbinfo", new List<MSQL.Value>()
             {
-                new MSQL.Value("version", version.ToString()),
+                new MSQL.Value("version", protocolVersion.ToString()),
                 new MSQL.Value("seasonscount", "0"),
                 new MSQL.Value("userscount", "0")
             });
@@ -352,7 +481,10 @@ namespace WindWingAppServer
 
             WriteSeason1Data();
 
-            //RegisterUser(CreateUser("Minik", "", "", "", "", true, ""));
+            if (MUtil.debug)
+            {
+                RegisterUser(CreateUser("Minik", "", "", "", "", true, ""));
+            }
         }
 
 
@@ -372,16 +504,6 @@ namespace WindWingAppServer
 
             if (objects.Count == 0) return;
 
-            /*List<object[]> uObjects = new List<object[]>(objects[0].Length);
-            for(int i = 0;i<objects[0].Length; i++)
-            {
-                object[] data = new object[objects.Count];
-                for(int j = 0;j<objects.Count;j++)
-                {
-                    data[j] = objects[j][i];
-                }
-                uObjects.Add(data);
-            }*/
             var uObjects = MUtil.FlipSQLData(objects);
             for(int i = 0;i<uObjects.Count;i++)
             {
@@ -404,7 +526,12 @@ namespace WindWingAppServer
                 new MSQL.Column("lapwet", MSQL.ColumnType.TIME),
                 new MSQL.Column("lapdrylink", MSQL.ColumnType.STRING),
                 new MSQL.Column("lapwetlink", MSQL.ColumnType.STRING),
-                new MSQL.Column("priority", MSQL.ColumnType.INT)
+                new MSQL.Column("priority", MSQL.ColumnType.INT),
+                new MSQL.Column("team", MSQL.ColumnType.INT),
+                new MSQL.Column("pteam1", MSQL.ColumnType.INT),
+                new MSQL.Column("pteam2", MSQL.ColumnType.INT),
+                new MSQL.Column("pteam3", MSQL.ColumnType.INT)
+
             });
 
             List<object[]> uObjects = MUtil.FlipSQLData(objects);
@@ -489,7 +616,6 @@ namespace WindWingAppServer
                         Debug.LogError("[WindWingAppServer.LoadSeasonsFromDB] Cannot load season races");
                         return false;
                     }
-                    //s.Log();
 
                     seasons.Add(s);
                 }
@@ -675,7 +801,32 @@ namespace WindWingAppServer
         const bool clear = false;
         public WindWingAppServer(bool clearAllData = false)
         {
-            Debug.Log("Loading WindWingAppServer version 0.5...");
+            File.AppendAllText(Debug.GetLogPath(), "[" + DateTime.Now.ToString() + "]\n");
+
+            if(File.Exists(Path.Combine(Debug.GetLogPath(false), "appversion.ini")))
+            {
+                try
+                {
+                    string data = File.ReadAllText(Path.Combine(Debug.GetLogPath(false), "appversion.ini"));
+                    appLatestVersion = int.Parse(data);
+                }
+                catch(Exception e)
+                {
+                    Debug.Exception(e, "Cannot load app version");
+                }
+            }
+            else
+            {
+                Debug.LogWarning("App latest version file not found, path: " + Path.Combine(Debug.GetLogPath(false), "appversion.ini"));
+            }
+
+
+            Debug.Log("Loading WindWingAppServer version 0.6.1...");
+
+            if(MUtil.debug)
+            {
+                Debug.Log("[WindWingAppServer] DEBUG MODE ACTIVE", ConsoleColor.Magenta);
+            }
 
             sql = new MSQL("localhost", "WindWingApp", "windWingStrongPass", "WindWingApp");
 
@@ -740,6 +891,10 @@ namespace WindWingAppServer
                         }
 
                         Debug.Log("User " + u.login + " is now an admin");
+                        break;
+
+                    case "getloglocation":
+                        Debug.Log(Debug.GetLogPath());
                         break;
 
                     default:

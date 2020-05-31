@@ -102,6 +102,10 @@ namespace WindWingAppServer.Models
             {
                 switch (header)
                 {
+                    case "id":
+                        id = int.Parse(content);
+                        return true;
+
                     case "track":
                         if (content.StartsWith("c("))
                         {
@@ -183,9 +187,10 @@ namespace WindWingAppServer.Models
                 return false;
             }
         }
+
         public string Serialize()
         {
-            return "race{" + track.Serialize() + ",date{" + date.ToString(new CultureInfo("de-DE")) + "}}";
+            return "race{id{" + id.ToString() + "}," + track.Serialize() + ",date{" + date.ToString(new CultureInfo("de-DE")) + "}}";
         }
 
     }
