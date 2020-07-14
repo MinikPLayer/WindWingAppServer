@@ -37,8 +37,13 @@ namespace WindWingAppServer.Models
             public void Log()
             {
                 Debug.Log("Season user: " + user.login);
-                Debug.Log("LapDry: " + lapDry + " - link: " + lapDryLink);
-                Debug.Log("LapWet: " + lapWet + " - link: " + lapWetLink);
+                Debug.Log("LapDry: " + lapDry.ToString("mm':'ss':'fff") + " - link: " + lapDryLink);
+                Debug.Log("LapWet: " + lapWet.ToString("mm':'ss':'fff") + " - link: " + lapWetLink);
+                if(team != null)
+                {
+                    Debug.Log("Team: " + team.name);
+                }
+                Debug.Log("Preffered teams:\n\t1) " + prefferedTeams[0].name + "\n\t2) " + prefferedTeams[1].name + "\n\t3) " + prefferedTeams[2].name);
             }
 
             public SeasonUser()
@@ -160,9 +165,26 @@ namespace WindWingAppServer.Models
                 }
             }
 
-            public string Serialize()
+            public enum AccessLevels
             {
-                return "seasonUser{id{" + user.id.ToString() + "},lapDry{" + lapDry.ToString("mm':'ss':'fff") + "},lapWet{" + lapWet.ToString("mm':'ss':'fff") + "},lapDryLink{" + lapDryLink + "},lapWetLink{" + lapWetLink + "},team{" + team.id.ToString() + "},team1{" + prefferedTeams[0].id + "},team2{" + prefferedTeams[1].id + "},team3{" + prefferedTeams[2].id + "}}";
+                user,
+                owner,
+                admin
+            }
+
+            public string Serialize(AccessLevels accessLevel)
+            {
+                //return "seasonUser{id{" + user.id.ToString() + "},lapDry{" + lapDry.ToString("mm':'ss':'fff") + "},lapWet{" + lapWet.ToString("mm':'ss':'fff") + "},lapDryLink{" + lapDryLink + "},lapWetLink{" + lapWetLink + "},team{" + team.id.ToString() + "},team1{" + prefferedTeams[0].id + "},team2{" + prefferedTeams[1].id + "},team3{" + prefferedTeams[2].id + "}}";
+                string val = "seasonUser{id{" + user.id.ToString() + "}";
+                val += ",team{" + team.id.ToString() + "}";
+                if(accessLevel > AccessLevels.user)
+                {
+                    val += ",lapDry{" + lapDry.ToString("mm':'ss':'fff") + "},lapWet{" + lapWet.ToString("mm':'ss':'fff") + "},lapDryLink{" + lapDryLink + "},lapWetLink{" + lapWetLink + "},team1{" + prefferedTeams[0].id + "},team2{" + prefferedTeams[1].id + "},team3{" + prefferedTeams[2].id + "}";
+                }
+
+                val += "}";
+
+                return val;
             }
 
             public void FillVariables(TimeSpan lapDry, TimeSpan lapWet, string lapDryLink, string lapWetLink, Team team1, Team team2, Team team3, int priority = int.MaxValue)
@@ -230,11 +252,12 @@ namespace WindWingAppServer.Models
         public List<SeasonUser> users = new List<SeasonUser>();
         public RegistrationData registrationData;
         public int finishedRaces;
+        public bool assigned;
         public bool finished
         {
             get
             {
-                return finishedRaces >= racesCount;
+                return finishedRaces >= racesCount || users.Count <= 20;
             }
         }
         public string prefix;
@@ -243,7 +266,12 @@ namespace WindWingAppServer.Models
         public bool good;
         public void Log()
         {
-            Debug.Log("Season " + id.ToString() + ": ");
+            Debug.Log("Season " + id.ToString(), ConsoleColor.White, false);
+            if(assigned)
+            {
+                Debug.Log(" (assigned)", ConsoleColor.White, false);
+            }
+            Debug.Log(": ");
             Debug.Log("Races count: " + racesCount);
             Debug.Log("Finished races: " + finishedRaces);
             if (registrationTrack == null)
@@ -282,6 +310,132 @@ namespace WindWingAppServer.Models
             if(prefix.Length == 0)
             {
                 prefix = "s" + this.id + "_";
+            }
+        }
+
+        /// <summary>
+        /// Assiigns driver to season after registration period
+        /// </summary>
+        /// <param name="sUser"></param>
+        public void AssignDriverAfterRegistartion(SeasonUser user)
+        {
+            int[] teams = new int[Team.GetLength()];
+            for(int i = 0;i<users.Count;i++)
+            {
+                teams[users[i].team.id]++;
+            }
+
+            for(int i = 0;i<user.prefferedTeams.Length;i++)
+            {
+                if(teams[user.prefferedTeams[i].id] < 2)
+                {
+                    user.team = user.prefferedTeams[i];
+                    return;
+                }
+            }
+
+            for(int i = 0;i<teams.Length;i++)
+            {
+                if(teams[i] < 2)
+                {
+                    user.team = Team.GetTeam(i);
+                    return;
+                }
+            }
+
+            if(user.team == null)
+            {
+                user.team = Team.other;
+            }
+
+            //UpdateLeaderboards();
+        }
+
+        /// <summary>
+        /// Assigns drivers to season
+        /// </summary>
+        public void AssignDrivers()
+        {
+            try
+            {
+                for (int i = 0; i < users.Count; i++)
+                {
+                    int index = i;
+                    double min = double.MaxValue;
+                    for (int j = i; j < users.Count; j++)
+                    {
+                        if (users[j].user.donate > users[index].user.donate)
+                        {
+                            index = j;
+                        }
+                        else if (users[j].user.donate == users[index].user.donate)
+                        { 
+                            double sum = users[j].lapDry.TotalMilliseconds + users[j].lapWet.TotalMilliseconds;
+                            if (sum < min)
+                            {
+                                min = sum;
+                                index = j;
+                            }
+                        }
+                    }
+                    var pom = users[i];
+                    users[i] = users[index];
+                    users[index] = pom;
+
+                    users[i].priority = i;
+                }
+                // Null all users, so it's cleared for assigning
+                for (int i = 0; i < users.Count; i++)
+                {
+                    users[i].team = null;
+                }
+
+                int[] teams = new int[Team.teams.Length];
+                for (int i = 0; i < users.Count; i++)
+                {
+                    for (int j = 0; j < users[i].prefferedTeams.Length; j++)
+                    {
+                        if (users[i].prefferedTeams[j].id == Team.other.id)
+                        {
+                            break;
+                        }
+
+                        if (teams[users[i].prefferedTeams[j].id] < 2)
+                        {
+                            users[i].team = users[i].prefferedTeams[j];
+                            teams[users[i].prefferedTeams[j].id]++;
+                            break;
+                        }
+                    }
+                }
+
+                for (int i = 0; i < users.Count; i++)
+                {
+                    if (users[i].team != null) continue;
+                    for (int j = 0; j < teams.Length; j++)
+                    {
+                        if (teams[j] < 2)
+                        {
+                            users[i].team = Team.GetTeam(j);
+                            teams[j]++;
+                            break;
+                        }
+                    }
+                    if (users[i].team == null)
+                    {
+                        users[i].team = Team.other;
+                    }
+                }
+
+
+                assigned = true;
+                //UpdateLeaderboards();
+                
+                Debug.Log("Assigned drivers");
+            }
+            catch(Exception e)
+            {
+                Debug.Exception(e, "[Error assigning drivers]");
             }
         }
 
@@ -413,6 +567,8 @@ namespace WindWingAppServer.Models
                         return false;
                     }
                 }
+                
+                //UpdateLeaderboards();
 
                 return true;
             }
@@ -456,7 +612,7 @@ namespace WindWingAppServer.Models
 
                     for(int i = 0;i<users.Count;i++)
                     {
-                        str += users[i].Serialize();
+                        str += users[i].Serialize(SeasonUser.AccessLevels.admin);
                         if(i != users.Count - 1)
                         {
                             str += ',';
@@ -476,7 +632,7 @@ namespace WindWingAppServer.Models
                     {
                         if (users[i].user.id == singleUser.id)
                         {
-                            str += users[i].Serialize();
+                            str += users[i].Serialize(SeasonUser.AccessLevels.owner);
                             if (i != users.Count - 1)
                             {
                                 str += ',';
@@ -494,7 +650,7 @@ namespace WindWingAppServer.Models
 
         public bool LoadFromSql(object[] data)
         {
-            if (data.Length < 7)
+            if (data.Length < 8)
             {
                 Debug.LogError("[Season.LoadFromSql] Not enough data to load from, found only " + data.Length + " columns");
                 return false;
@@ -511,6 +667,7 @@ namespace WindWingAppServer.Models
                 prefix = (string)data[4];
                 registrationData = new RegistrationData((DateTime)data[5]);
                 registrationTrack = Track.GetTrack((int)data[6]);
+                assigned = (bool)data[7];
 
                 return true;
             }
@@ -565,6 +722,86 @@ namespace WindWingAppServer.Models
             this.registrationData = registrationData;
 
             this.registrationTrack = registrationTrack;
+        }
+
+        static int[] points = { 25, 18, 15, 12, 10, 8, 6, 4, 2, 1 };
+        int GetPoints(int place)
+        {
+            place--;
+            if(place < 0 || place >= points.Length)
+            {
+                return 0;
+            }
+            return points[place];
+        }
+
+        string leaderboardsStr = "";
+        public void UpdateLeaderboards()
+        {
+            int[] points = new int[users.Count];
+            for (int i = 0; i < races.Count; i++)
+            {
+                Race.Result bestLap = null;
+                for (int j = 0; j < races[i].results.Count; j++)
+                {
+                    if(bestLap == null)
+                    {
+                        bestLap = races[i].results[j];
+                    }
+                    else if(races[i].results[j].bestLap < bestLap.bestLap)
+                    {
+                        bestLap = races[i].results[j];
+                    }
+                    if(races[i].results[j].dnf || !races[i].results[j].started)
+                    {
+                        continue;
+                    }
+                    // Find user
+                    for (int k = 0; k < users.Count; k++)
+                    {
+                        if (races[i].results[j].user.id == users[k].user.id)
+                        {
+                            points[k] += GetPoints(races[i].results[j].place);
+                            break;
+                        }
+                    }
+                }
+                if (races[i].date < DateTime.Now && bestLap != null && bestLap.bestLap != TimeSpan.Zero)
+                {
+                    // Must be in points to get additional best lap point
+                    if (bestLap.place < 10 && bestLap.place >= 0 && !bestLap.dnf && bestLap.started)
+                    {
+                        // Find user
+                        for (int k = 0; k < users.Count; k++)
+                        {
+                            if (bestLap.user.id == users[k].user.id)
+                            {
+                                points[k] += 1;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            leaderboardsStr = points.Length.ToString() + "{";
+            for (int i = 0; i < points.Length; i++)
+            {
+                leaderboardsStr += "(" + users[i].user.id + "," + points[i].ToString() + "," + users[i].team.shortName + ")";
+                if (i != points.Length - 1)
+                {
+                    leaderboardsStr += ";";
+                }
+            }
+            leaderboardsStr += "}";
+
+        }
+
+        public string GetLeaderboards()
+        {
+            UpdateLeaderboards();
+
+            return leaderboardsStr;
         }
     }
 }

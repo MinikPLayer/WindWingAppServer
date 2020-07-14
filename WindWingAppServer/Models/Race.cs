@@ -16,11 +16,52 @@ namespace WindWingAppServer.Models
         {
             public User user;
             public int place;
+            public TimeSpan bestLap;
+            public TimeSpan time;
+            public bool dnf;
+            public bool started;
 
-            public Result(User user, int place)
+            public bool good = true;
+
+            public Result(User user, int place, TimeSpan bestLap, TimeSpan time, bool dnf = false, bool started = false)
             {
                 this.user = user;
                 this.place = place;
+                this.bestLap = bestLap;
+                this.time = time;
+                this.dnf = dnf;
+                this.started = started;
+            }
+
+            public Result(object[] data)
+            {
+                good = LoadFromSql(data);
+            }
+
+            public bool LoadFromSql(object[] data)
+            {
+                try
+                {
+                    if (data.Length < 6)
+                    {
+                        Debug.LogError("[Race.Result.LoadFromSql] Not enough data to load from, found only " + data.Length + " columns");
+                        return false;
+                    }
+
+                    user = User.GetUser((int)data[0]);
+                    place = (int)data[1];
+                    bestLap = (TimeSpan)data[2];
+                    time = (TimeSpan)data[3];
+                    dnf = (bool)data[4];
+                    started = (bool)data[5];
+
+                    return true;
+                }
+                catch (Exception e)
+                {
+                    Debug.Exception(e, "[Race.LoadFromSql]");
+                    return false;
+                }
             }
         }
 
@@ -64,6 +105,7 @@ namespace WindWingAppServer.Models
             Debug.Log("Race id: " + id.ToString());
             Debug.Log("Date: " + date.ToString(new CultureInfo("de-DE")));
             Debug.Log("Track: " + track.country);
+            Debug.Log("Results count: " + results.Count);
         }
 
         public Race()
@@ -131,6 +173,60 @@ namespace WindWingAppServer.Models
                         date = DateTime.Parse(content, new CultureInfo("de-DE"));
                         return true;
 
+                    case "results":
+                        {
+                            List<string> data = MUtil.SplitWithBrackets(content);
+                            results.Clear();
+                            for(int i = 0;i<data.Count;i++)
+                            {
+                                string[] info = data[i].Split('|');
+                                if(info.Length < 4)
+                                {
+                                    Debug.LogError("[Race.ParseSinglePacket] Not enough data in results packet");
+                                    return false;
+                                }
+
+                                for(int j = 0;j<info.Length;j++)
+                                {
+                                    Debug.Log("Info[" + j.ToString() + "]: " + info[j]);
+                                }
+
+                                User u = null;
+                                int place = int.Parse(info[0]);
+                                int id = int.Parse(info[1]);
+                                TimeSpan gap = TimeSpan.ParseExact(info[2], "hh':'mm':'ss':'fff", null);
+                                TimeSpan bestLap = TimeSpan.ParseExact(info[3], "mm':'ss':'fff", null);
+                                bool dnf = false;
+                                bool started = false;
+
+                                if(info.Length > 5)
+                                {
+                                    dnf = bool.Parse(info[4]);
+                                    started = bool.Parse(info[5]);
+                                }
+
+                                for (int j = 0;j<User.users.Count;j++)
+                                {
+                                    if(User.users[j].id == id)
+                                    {
+                                        u = User.users[j];
+                                        break;
+                                    }
+                                }
+                                if(u == null)
+                                {
+                                    Debug.LogError("[Race.ParseSinglePacket] User with id " + id.ToString() + " not found");
+                                    return false;
+                                }
+
+                                var res = new Result(u, place, bestLap, gap, dnf, started);
+                                results.Add(res);
+                                Debug.Log("Added result for race " + this.track.country.ToString() + " for user " + u.login);
+                                
+                            }
+                            return true;
+                        }
+
                     default:
                         Debug.LogError("[WindWingApp.Season.Race.ParseSinglePacket] Unknown header");
                         return false;
@@ -190,7 +286,27 @@ namespace WindWingAppServer.Models
 
         public string Serialize()
         {
-            return "race{id{" + id.ToString() + "}," + track.Serialize() + ",date{" + date.ToString(new CultureInfo("de-DE")) + "}}";
+            string str = "race{id{" + id.ToString() + "}," + track.Serialize() + ",date{" + date.ToString(new CultureInfo("de-DE")) + "}";
+        
+            if(results.Count > 0)
+            {
+                str += ",results{";
+
+                for(int i = 0;i<results.Count;i++)
+                {
+                    str += results[i].place.ToString() + "|" + results[i].user.id.ToString() + "|" + results[i].time.ToString("hh':'mm':'ss':'fff") + "|" + results[i].bestLap.ToString("mm':'ss':'fff") + "|" + results[i].dnf.ToString() + "|" + results[i].started.ToString();
+                    if(i != results.Count - 1)
+                    {
+                        str += ',';
+                    }
+                }
+
+                str += "}";
+            }
+
+            str += "}";
+
+            return str;
         }
 
     }

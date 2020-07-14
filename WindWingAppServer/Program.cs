@@ -12,14 +12,28 @@ namespace WindWingAppServer
         {
             Console.WriteLine("Starting server...");
 
+            string add = "";
+
             bool clear = false;
             if(args.Length > 0 && args[0] == "-clear")
             {
                 clear = true;
                 Debug.Log("Clearing DB...");
             }
+            if(args.Length > 0 && args[0] == "-addDNF")
+            {
+                Debug.Log("Adding DNF to tables");
+                add = "-addDNF";
+            }
 
-            WindWingAppServer server = new WindWingAppServer(clear);
+            #if !DEBUG
+                if (clear)
+                {
+                    clear = MUtil.AskUserYesNo("clear the database?");
+                }
+            #endif
+
+            WindWingAppServer server = new WindWingAppServer(clear, add);
         }
     }
 }

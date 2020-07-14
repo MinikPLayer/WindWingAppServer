@@ -21,6 +21,8 @@ namespace WindWingAppServer.Models
         public Network.Connection connection = null;
 
         public bool good = true;
+
+        public int donate = 0;
         public void LoadDefaults()
         {
             this.id = 0;
@@ -143,12 +145,12 @@ namespace WindWingAppServer.Models
 
         public List<string> ToSQL()
         {
-            return new List<string>() { id.ToString(), login, password, token, email, steam, admin ? "1" : "0" };
+            return new List<string>() { id.ToString(), login, password, token, email, steam, admin ? "1" : "0", donate.ToString() };
         }
 
         public List<MSQL.Value> ToSqlValues()
         {
-            return new List<MSQL.Value>(){
+            return new List<MSQL.Value>() {
                     new MSQL.Value("id", id),
                     new MSQL.Value("login", login),
                     new MSQL.Value("password", password),
@@ -156,8 +158,9 @@ namespace WindWingAppServer.Models
                     new MSQL.Value("email", email),
                     new MSQL.Value("steam", steam),
                     new MSQL.Value("ip", ip),
-                    new MSQL.Value("admin", admin)
-                };
+                    new MSQL.Value("admin", admin),
+                    new MSQL.Value("donate", donate)
+            };
         }
 
 
@@ -166,7 +169,7 @@ namespace WindWingAppServer.Models
         {
             try
             {
-                if (data.Length < 7)
+                if (data.Length < 9)
                 {
                     Debug.LogError("[User.LoadFromSqlUsers] Not enough data to load from, found only " + data.Length + " columns");
                     return false;
@@ -178,7 +181,9 @@ namespace WindWingAppServer.Models
                 token = (string)data[3];
                 email = (string)data[4];
                 steam = (string)data[5];
-                admin = (bool)data[6];
+                ip = (string)data[6];
+                admin = (bool)data[7];
+                donate = (int)data[8];
 
                 return true;
             }

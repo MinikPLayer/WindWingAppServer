@@ -64,7 +64,38 @@ namespace WindWingAppServer
             {
                 Debug.Log($"Connection established with {connection.IPRemoteEndPoint}");
 
-                //connection.RegisterStaticPacketHandler<DataRequest>(DataRequested);
+                connection.RegisterRawDataHandler("WP", WelcomePacketRequest); // Welcome Packet
+
+            }
+            catch(Exception e)
+            {
+                Debug.Exception(e, "[NetworkData.ConnectionEstablished]");
+            }
+        }
+
+        void WelcomePacketRequest(RawData data, Connection connection)
+        {
+            try
+            {
+                
+
+                string[] info = GetString(data).Split(';');
+                if (info.Length == 0)
+                {
+                    Send(connection, data.Key, "ER;Empty Request");
+                    return;
+                }
+
+                if (info.Length < 1)
+                {
+                    Send(connection, data.Key, "BP;Brak wystarczajacej ilosci parametrow");
+                    return;
+                }
+
+                int version = int.Parse(info[0]);
+
+                Debug.Log("Got welcome packet from " + connection.IPRemoteEndPoint.Address.ToString() + " - version: " + version.ToString());
+
                 connection.RegisterRawDataHandler("Leaderboards", LeaderboardsDataRequested);
                 connection.RegisterRawDataHandler("Login", LoginRequest);
                 connection.RegisterRawDataHandler("LoginT", LoginTRequest);
@@ -72,10 +103,13 @@ namespace WindWingAppServer
                 connection.RegisterRawDataHandler("RegisterSeason", RegisterToSeasonRequest);
                 connection.RegisterRawDataHandler("SeasonUser", SeasonUserRequest);
                 connection.RegisterRawDataHandler("RegisterUser", RegisterUserRequest);
+
+                Send(connection, data.Key, "OK");
             }
             catch(Exception e)
             {
-                Debug.Exception(e, "[NetworkData.ConnectionEstablished]");
+                Debug.Exception(e, "Error processing welcome packet ");
+                Send(connection, data.Key, "BV;Błędny kod wersji");
             }
         }
 
@@ -99,6 +133,7 @@ namespace WindWingAppServer
         {
             try
             {
+                Debug.Log("Season user request");
                 User user = GetUser(con);
                 if (user == null)
                 {
@@ -114,7 +149,7 @@ namespace WindWingAppServer
                     return;
                 }
 
-                if (info.Length < 2)
+                if (info.Length < 3)
                 {
                     Send(con, data.Key, "BP;Brak wystarczajacej ilosci parametrow");
                     return;
@@ -127,14 +162,33 @@ namespace WindWingAppServer
                     return;
                 }
 
+                User target = null;
+                if (info[2] == "C")
+                {
+                    target = user;
+                }
+                else
+                {
+                    int id = int.Parse(info[2]);
+                    target = User.GetUser(id);
+                    if(target == null)
+                    {
+                        Send(con, data.Key, "BU;Nie znaleziono użytkownika");
+                        return;
+                    }
+                }
+
                 switch (info[1])
                 {
                     case "Get":
                         for(int i = 0;i<season.users.Count;i++)
                         {
-                            if(season.users[i].user.id == user.id)
+                            if(season.users[i].user.id == target.id)
                             {
-                                Send(con, data.Key, "OK;" + season.users[i].Serialize());
+                                Season.SeasonUser.AccessLevels level = Season.SeasonUser.AccessLevels.user;
+                                if (user.id == target.id) level = Season.SeasonUser.AccessLevels.owner;
+
+                                Send(con, data.Key, "OK;" + season.users[i].Serialize(level));
                                 return;
                             }
                         }
@@ -305,11 +359,47 @@ namespace WindWingAppServer
 
 
                 User user = server.GetUser(info[0]);
+                if(info[3].StartsWith("RESET:"))
+                {
+                    if(user == null)
+                    {
+                        Debug.Log("[NetworkData.RegisterUserRequest] (" + con.IPRemoteEndPoint.Address + ") User not found");
+                        Send(con, data.Key, "BU;Nie znaleziono użytkownika");
+                        return;
+                    }
+                    user = server.GetUserByMail(info[2]);
+                    if (user == null)
+                    {
+                        Send(con, data.Key, "BD;Błędne dane wymagane do resetu hasła");
+                        Debug.Log("[NetworkData.RegisterUserRequest] User with that email account doesn't exists so cannot reset password");
+                        return;
+                    }
+                    string token = info[3].Split(':')[1];
+                    if(!server.ResetPassword(user, token, info[1]))
+                    {
+                        Debug.Log("[NetworkData.RegisterUserRequest] (" + con.IPRemoteEndPoint.Address + ") Bad password reset token");
+                        Send(con, data.Key, "BT;Błędny token resetowania hasła");
+                        return;
+                    }
+                    Debug.Log("[NetworkData.RegisterUserRequest] (" + con.IPRemoteEndPoint.Address + ") Password for user " + user.login + " resetted");
+                    user.token = WindWingAppServer.GenerateToken();
+                    Send(con, data.Key, "OK;" + user.token);
+                    return;
+                }
+
+                User emptyPasswordUser = null;
                 if (user != null)
                 {
-                    Send(con, data.Key, "UE;Uzytkownik o takiej nazwie juz istnieje");
-                    Debug.Log("User already exists");
-                    return;
+                    if (user.password.Length == 0)
+                    {
+                        emptyPasswordUser = user;
+                    }
+                    else
+                    {
+                        Send(con, data.Key, "UE;Uzytkownik o takiej nazwie juz istnieje");
+                        Debug.Log("User already exists");
+                        return;
+                    }
                 }
 
                 user = server.GetUserByMail(info[2]);
@@ -331,6 +421,18 @@ namespace WindWingAppServer
                 // Adres email
                 info[2] = info[2].ToLower();
 
+                if(emptyPasswordUser != null)
+                {
+                    emptyPasswordUser.password = info[1];
+                    emptyPasswordUser.token = WindWingAppServer.GenerateToken();
+                    emptyPasswordUser.steam = info[3];
+                    emptyPasswordUser.email = info[2];
+
+                    server.RewriteUser(emptyPasswordUser);
+                    Debug.Log("Completed user " + emptyPasswordUser.login + " registration (" + con.IPRemoteEndPoint.Address.ToString() + ")");
+                    Send(con, data.Key, "OK;" + emptyPasswordUser.token.Replace(";", "\\:"));
+                    return;
+                }
                 user = server.CreateUser(info[0], info[1], info[2], info[3], con.IPRemoteEndPoint.Address.ToString());
                 server.RegisterUser(user);
 
@@ -373,11 +475,6 @@ namespace WindWingAppServer
                     return;
                 }
 
-                if(!season.registrationData.opened)
-                {
-                    Send(con, data.Key, "RC;Rejestracja do tego sezonu została już zamknięta");
-                    return;
-                }
 
                 var sUser = server.AddSeasonUser(season, user, TimeSpan.Parse(info[1]), TimeSpan.Parse(info[2]), info[3], info[4], Team.GetTeam(int.Parse(info[5])), Team.GetTeam(int.Parse(info[6])), Team.GetTeam(int.Parse(info[7])));
 
@@ -401,8 +498,6 @@ namespace WindWingAppServer
         {
             try
             {
-                
-
                 var user = GetUser(con);
                 if (!user.admin)
                 {
@@ -498,6 +593,95 @@ namespace WindWingAppServer
 
                         break;
 
+                    case "GetUsers":
+                        string dt = User.users.Count.ToString() + "{";
+                        for(int i = 0;i<User.users.Count;i++)
+                        {
+                            dt += User.users[i].id.ToString();
+                            if (i != User.users.Count - 1)
+                            {
+                                dt += ',';
+                            }
+                        }
+                        dt += '}';
+                        Send(con, data.Key, "OK;" + dt);
+                        Debug.Log("User " + user.id + " (" + con.IPRemoteEndPoint.Address.ToString() + ") got users list");
+                        return;
+
+                    case "SeasonUser":
+                        {
+                            if (info.Length == 1)
+                            {
+                                Send(con, data.Key, "ER;Empty Request");
+                                return;
+                            }
+
+                            if (info.Length < 4)
+                            {
+                                Send(con, data.Key, "BP;Brak wystarczajacej ilosci parametrow");
+                                return;
+                            }
+
+                            var season = server.GetSeason(int.Parse(info[1]));
+                            if (season == null)
+                            {
+                                Send(con, data.Key, "BS;Nie znaleziono sezonu");
+                                return;
+                            }
+                            switch (info[2])
+                            {
+                                default:
+                                    Send(con, data.Key, "BT;Błędny tag");
+                                    return;
+                            }
+                            break;
+                        }
+
+                    case "RegisterSeason":
+                        {
+                            if (info.Length < 10)
+                            {
+                                Send(con, data.Key, "ND;Zbyt malo informacji");
+                                return;
+                            }
+
+                            int seasonNmbr = int.Parse(info[1]);
+
+                            Season season = server.GetSeason(seasonNmbr);
+                            if (season == null)
+                            {
+                                Send(con, data.Key, "BS;Bledny numer sezonu");
+                                return;
+                            }
+
+                            User nUser = User.GetUser(int.Parse(info[9]));
+
+                            var sUser = server.AddSeasonUser(season, nUser, TimeSpan.Parse(info[2]), TimeSpan.Parse(info[3]), info[4], info[5], Team.GetTeam(int.Parse(info[6])), Team.GetTeam(int.Parse(info[7])), Team.GetTeam(int.Parse(info[8])));
+
+                            if (sUser == null)
+                            {
+                                Send(con, data.Key, "IE;Błąd dodawania użytkownika, zgłoś się do administratora o pomoc jeśli problem się powtórzy");
+                                return;
+                            }
+
+                            Debug.Log("Registered to season " + season.id.ToString() + " user: " + nUser.login + " by admin " + user.login + " (" + user.id.ToString() + ")");
+                            Send(con, data.Key, "OK");
+                            break;
+                        }
+
+                    case "CreateUser":
+                        {
+                            if(info.Length < 2) // CreateUser;login
+                            {
+                                Send(con, data.Key, "ND;Zbyt malo informacji");
+                                return;
+                            }
+                            User u = server.CreateUser(info[1], "", "", "", "", false, "");
+                            server.RegisterUser(u);
+                            Send(con, data.Key, "OK");
+                            break;
+                        }
+
                     default:
                         Send(con, data.Key, "NF;Nie znaleziono tagu");
                         return;
@@ -523,9 +707,9 @@ namespace WindWingAppServer
                     return;
                 }
 
-                if(MUtil.debug)
+                #if DEBUG
                 {
-                    if(info[0] == "Minik")
+                    if (info[0] == "Minik")
                     {
                         User u = server.GetUser("Minik");
 
@@ -543,6 +727,7 @@ namespace WindWingAppServer
                         return;
                     }
                 }
+                #endif
 
 
                 info[1] = info[1].Replace("\\:", ";");
@@ -551,8 +736,15 @@ namespace WindWingAppServer
                 if (user == null)
                 {
                     User u = server.GetUser(info[0]);
-                    Debug.Log("Bad credentials with login: \"" + info[0] + "\"");
+                    Debug.Log("(" + con.IPRemoteEndPoint.Address + ") Bad credentials with login: \"" + info[0] + "\"");
                     Send(con, data.Key, "BC;Bledny login lub token, zaloguj sie ponownie");
+                    return;
+                }
+
+                if(user.password.Length == 0 || user.token.Length == 0)
+                {
+                    Send(con, data.Key, "NL;Możliwość logowania dla tego użytkownika została zablokowana");
+                    Debug.Log("(" + con.IPRemoteEndPoint.Address.ToString() + ") tried to log in uncompleted registration user");
                     return;
                 }
 
@@ -588,13 +780,42 @@ namespace WindWingAppServer
                     return;
                 }
 
+                #if DEBUG
+                {
+                    if (info[0] == "Minik")
+                    {
+                        User u = server.GetUser("Minik");
+
+                        u.connection = con;
+                        loggedIn.Add(u);
+                        Send(con, data.Key, "OK;" + u.login + ";" + u.token + ";" + u.admin);
+
+                        Debug.Log("User Minik logged in without using token [ DEBUG ]");
+                        if (u.admin)
+                        {
+                            Debug.Log("Adding Admin request handler");
+                            con.RegisterRawDataHandler("Admin", AdminRequest);
+                        }
+
+                        return;
+                    }
+                }
+                #endif
+
                 info[1] = info[1].Replace("\\:", ";");
 
                 User user = server.GetUser(info[0], info[1], false);
                 if (user == null)
                 {
-                    Debug.Log("Bad credentials");
+                    Debug.Log("(" + con.IPRemoteEndPoint.Address + ") Bad credentials");
                     Send(con, data.Key, "BC;Bledny login lub haslo");
+                    return;
+                }
+
+                if (user.password.Length == 0 || user.token.Length == 0)
+                {
+                    Send(con, data.Key, "NL;Możliwość logowania dla tego użytkownika została zablokowana");
+                    Debug.Log("(" + con.IPRemoteEndPoint.Address.ToString() + ") tried to log in uncompleted registration user");
                     return;
                 }
 

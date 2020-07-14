@@ -9,7 +9,11 @@ using System.Threading;
 public static class MUtil
 {
 
+#if DEBUG
     public const bool debug = true;
+#else
+    public const bool debug = false;
+#endif
 
 
     public static bool IsLinux
@@ -335,7 +339,7 @@ public class ParsingExcetpion : Exception
 
 public static class Debug
 {
-    public static string logPath;
+    static string logPath;
 
     public static string GetLogPath(bool withFile = true)
     {

@@ -49,7 +49,7 @@ namespace WindWingAppServer
         public string lastError = "";
         public bool error = false;
         bool sqlBusy = false;
-        public string[] ExecuteCommand(string cmd, char separator = ';')
+        public string[] ExecuteCommand(string cmd, char separator = ';', int level = 0)
         {
             while(sqlBusy)
             {
@@ -61,6 +61,14 @@ namespace WindWingAppServer
             try
             {
                 
+                if(mySQL.State != System.Data.ConnectionState.Open)
+                {
+                    Debug.LogWarning("SQL connection is not opened, reopening");
+                    mySQL.Close();
+                    mySQL.Open();
+                    error = false;
+                }
+
                 using (var command = new MySqlCommand(cmd, mySQL))
                 {
                     using (var reader = command.ExecuteReader())
@@ -80,6 +88,19 @@ namespace WindWingAppServer
                             data.Add(str);
                         }
                     }
+                }
+            }
+            catch(System.IO.IOException e)
+            {
+                if(level > 0)
+                {
+                    Debug.Exception(e, "[MSQL.ExecuteCommand.IOException] Command: \"" + cmd + "\"");
+                    error = true;
+                    lastError = e.ToString();
+                }
+                else
+                {
+                    return ExecuteCommand(cmd, separator, level + 1);
                 }
             }
             catch(Exception e)
@@ -171,11 +192,13 @@ namespace WindWingAppServer
         {
             public string name;
             public ColumnType type;
+            public bool notNull;
 
-            public Column(string name, ColumnType type)
+            public Column(string name, ColumnType type, bool notNull = true)
             {
                 this.name = name;
                 this.type = type;
+                this.notNull = notNull;
             }
         }
 
@@ -190,6 +213,10 @@ namespace WindWingAppServer
             for (int i = 0;i<columns.Count;i++)
             {
                 cmd += columns[i].name.Replace("\'", "\'\'") + " " + columns[i].type.sqlTypeStr;
+                if(columns[i].notNull)
+                {
+                    cmd += " NOT NULL";
+                }
                 if (i != columns.Count - 1)
                 {
                     cmd += ',';
@@ -236,6 +263,7 @@ namespace WindWingAppServer
             public Value(string name, string value)
             {
                 this.name = name;
+                if (value == null) value = "";
                 this.value = value;
             }
 
@@ -260,15 +288,13 @@ namespace WindWingAppServer
             public Value(string name, DateTime value)
             {
                 this.name = name;
-                //this.value = value.ToString();
                 this.value = value.Year + "-" + value.Month + "-" + value.Day + " " + value.Hour + ":" + value.Minute + ":" + value.Second;
             }
 
             public Value(string name, TimeSpan value)
             {
                 this.name = name;
-                this.value = ((int)value.TotalMilliseconds).ToString(); //value.ToString();
-
+                this.value = ((int)value.TotalMilliseconds).ToString();
             }
         }
 
@@ -371,22 +397,57 @@ namespace WindWingAppServer
             ExecuteCommand(cmd);
         }
 
-        public T[] ReadEntry<T>(string table, Column column, string where = "")
+        public T[] ReadEntry<T>(string table, Column column, string where = "", int level = 0)
         {
             string cmd = "SELECT " + column.name + " FROM " + table + " " + where;
-            List<T> objects = new List<T>();
-            using (var command = new MySqlCommand(cmd, mySQL))
+            try
             {
-                using (var reader = command.ExecuteReader())
+
+                if (mySQL.State != System.Data.ConnectionState.Open)
                 {
-                    while (reader.Read())
+                    Debug.LogWarning("SQL connection is not opened, reopening");
+                    mySQL.Close();
+                    mySQL.Open();
+                    error = false;
+                }
+
+                
+                List<T> objects = new List<T>();
+                using (var command = new MySqlCommand(cmd, mySQL))
+                {
+                    using (var reader = command.ExecuteReader())
                     {
-                        objects.Add(column.type.GetValue<T>(reader, 0));
+                        while (reader.Read())
+                        {
+                            objects.Add(column.type.GetValue<T>(reader, 0));
+                        }
                     }
                 }
-            }
 
-            return objects.ToArray();
+                return objects.ToArray();
+            }
+            catch (System.IO.IOException e)
+            {
+                if (level > 0)
+                {
+                    Debug.Exception(e, "[MSQL.ReadEntry.IOException] Command: \"" + cmd + "\"");
+                    error = true;
+                    lastError = e.ToString();
+                }
+                else
+                {
+                    return ReadEntry<T>(table, column, where, level + 1);
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.Exception(e, "[MSQL.ReadEntry] Command: \"" + cmd + "\"");
+                error = true;
+                lastError = e.ToString();
+
+                
+            }
+            return default;
         }
 
         public object[] ReadEntry(string table, Column column, string where = "")

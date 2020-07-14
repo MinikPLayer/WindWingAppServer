@@ -10,14 +10,15 @@ namespace WindWingAppServer.Models
         public string name;
         public string shortName;
         public string iconPath;
+        public bool disabled;
 
-
-        public Team(int id, string name, string shortName, string iconPath)
+        public Team(int id, string name, string shortName, string iconPath, bool disabled = false)
         {
             this.id = id;
             this.name = name;
             this.shortName = shortName;
             this.iconPath = iconPath;
+            this.disabled = disabled;
         }
 
         internal List<string> ToSQL()
@@ -38,6 +39,7 @@ namespace WindWingAppServer.Models
         public static Team GetTeam(int id)
         {
             if (id < 0 || id >= teams.Length) return null;
+            if (teams[id].disabled) return null;
             return teams[id];
         }
 
@@ -45,12 +47,17 @@ namespace WindWingAppServer.Models
         {
             for(int i = 0;i<teams.Length;i++)
             {
-                if(teams[i].name == name)
+                if(teams[i].name == name && !teams[i].disabled)
                 {
                     return teams[i];
                 }
             }
             return null;
+        }
+
+        public static int GetLength()
+        {
+            return 11;
         }
 
         public static Team[] teams = new Team[] {
@@ -66,5 +73,7 @@ namespace WindWingAppServer.Models
             new Team(9, "Williams", "WIL", ""),
             new Team(10, "Other", "OTH", "")
         };
+
+        public static Team other = teams[10];
     }
 }
