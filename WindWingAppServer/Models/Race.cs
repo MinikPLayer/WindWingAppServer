@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Net;
 using System.Text;
 
 namespace WindWingAppServer.Models
@@ -15,22 +16,26 @@ namespace WindWingAppServer.Models
         public class Result
         {
             public User user;
+            public Team team;
             public int place;
             public TimeSpan bestLap;
             public TimeSpan time;
             public bool dnf;
             public bool started;
+            public bool dnsu; // do not started undeclared
 
             public bool good = true;
 
-            public Result(User user, int place, TimeSpan bestLap, TimeSpan time, bool dnf = false, bool started = false)
+            public Result(User user, Team team, int place, TimeSpan bestLap, TimeSpan time, bool dnf = false, bool started = false, bool dnsu = false)
             {
                 this.user = user;
+                this.team = team;
                 this.place = place;
                 this.bestLap = bestLap;
                 this.time = time;
                 this.dnf = dnf;
                 this.started = started;
+                this.dnsu = dnsu;
             }
 
             public Result(object[] data)
@@ -42,18 +47,20 @@ namespace WindWingAppServer.Models
             {
                 try
                 {
-                    if (data.Length < 6)
+                    if (data.Length < 8)
                     {
                         Debug.LogError("[Race.Result.LoadFromSql] Not enough data to load from, found only " + data.Length + " columns");
                         return false;
                     }
 
                     user = User.GetUser((int)data[0]);
-                    place = (int)data[1];
-                    bestLap = (TimeSpan)data[2];
-                    time = (TimeSpan)data[3];
-                    dnf = (bool)data[4];
-                    started = (bool)data[5];
+                    team = Team.GetTeam((int)data[1]);
+                    place = (int)data[2];
+                    bestLap = (TimeSpan)data[3];
+                    time = (TimeSpan)data[4];
+                    dnf = (bool)data[5];
+                    started = (bool)data[6];
+                    dnsu = (bool)data[7];
 
                     return true;
                 }
@@ -186,23 +193,27 @@ namespace WindWingAppServer.Models
                                     return false;
                                 }
 
-                                for(int j = 0;j<info.Length;j++)
+                                /*for(int j = 0;j<info.Length;j++)
                                 {
                                     Debug.Log("Info[" + j.ToString() + "]: " + info[j]);
-                                }
+                                }*/
 
                                 User u = null;
+                                Team t = null;
                                 int place = int.Parse(info[0]);
-                                int id = int.Parse(info[1]);
-                                TimeSpan gap = TimeSpan.ParseExact(info[2], "hh':'mm':'ss':'fff", null);
-                                TimeSpan bestLap = TimeSpan.ParseExact(info[3], "mm':'ss':'fff", null);
+                                int team = int.Parse(info[1]);
+                                int id = int.Parse(info[2]);
+                                TimeSpan gap = TimeSpan.ParseExact(info[3], "hh':'mm':'ss':'fff", null);
+                                TimeSpan bestLap = TimeSpan.ParseExact(info[4], "mm':'ss':'fff", null);
                                 bool dnf = false;
                                 bool started = false;
+                                bool dnsu = false;
 
                                 if(info.Length > 5)
                                 {
-                                    dnf = bool.Parse(info[4]);
-                                    started = bool.Parse(info[5]);
+                                    dnf = bool.Parse(info[5]);
+                                    started = bool.Parse(info[6]);
+                                    dnsu = bool.Parse(info[7]);
                                 }
 
                                 for (int j = 0;j<User.users.Count;j++)
@@ -218,10 +229,17 @@ namespace WindWingAppServer.Models
                                     Debug.LogError("[Race.ParseSinglePacket] User with id " + id.ToString() + " not found");
                                     return false;
                                 }
+                                t = Team.GetTeam(team);
+                                if (t == null)
+                                {
+                                    Debug.LogError("[Race.ParseSinglePacket] Team with id " + team.ToString() + " not found");
+                                    return false;
+                                }
 
-                                var res = new Result(u, place, bestLap, gap, dnf, started);
+                                //Debug.Log("dnsu for user " + u.login + ": " + dnsu.ToString());
+                                var res = new Result(u, t, place, bestLap, gap, dnf, started, dnsu);
                                 results.Add(res);
-                                Debug.Log("Added result for race " + this.track.country.ToString() + " for user " + u.login);
+                                //Debug.Log("Added result for race " + this.track.country.ToString() + " for user " + u.login);
                                 
                             }
                             return true;
@@ -294,7 +312,7 @@ namespace WindWingAppServer.Models
 
                 for(int i = 0;i<results.Count;i++)
                 {
-                    str += results[i].place.ToString() + "|" + results[i].user.id.ToString() + "|" + results[i].time.ToString("hh':'mm':'ss':'fff") + "|" + results[i].bestLap.ToString("mm':'ss':'fff") + "|" + results[i].dnf.ToString() + "|" + results[i].started.ToString();
+                    str += results[i].place.ToString() + "|" + results[i].team.id.ToString() + "|" + results[i].user.id.ToString() + "|" + results[i].time.ToString("hh':'mm':'ss':'fff") + "|" + results[i].bestLap.ToString("mm':'ss':'fff") + "|" + results[i].dnf.ToString() + "|" + results[i].started.ToString() + "|" + results[i].dnsu.ToString();
                     if(i != results.Count - 1)
                     {
                         str += ',';

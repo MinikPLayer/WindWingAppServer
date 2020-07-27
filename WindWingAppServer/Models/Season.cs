@@ -253,6 +253,7 @@ namespace WindWingAppServer.Models
         public RegistrationData registrationData;
         public int finishedRaces;
         public bool assigned;
+        public int gameVersion;
         public bool finished
         {
             get
@@ -457,6 +458,10 @@ namespace WindWingAppServer.Models
                         registrationData.Deserialize(header + "{" + content + "}");
                         return true;
 
+                    case "gameVersion":
+                        gameVersion = int.Parse(content);
+                        return true;
+
                     case "track":
                         if (content.StartsWith("c("))
                         {
@@ -586,6 +591,7 @@ namespace WindWingAppServer.Models
             str += "id{" + id.ToString() + "},";
             str += registrationData.Serialize() + ",";
             str += registrationTrack.Serialize() + ",";
+            str += "gameVersion{" + gameVersion.ToString() + "},";
             str += "finishedRaces{" + finishedRaces + "}";
 
             if (races.Count > 0)
@@ -650,7 +656,7 @@ namespace WindWingAppServer.Models
 
         public bool LoadFromSql(object[] data)
         {
-            if (data.Length < 8)
+            if (data.Length < 9)
             {
                 Debug.LogError("[Season.LoadFromSql] Not enough data to load from, found only " + data.Length + " columns");
                 return false;
@@ -668,6 +674,7 @@ namespace WindWingAppServer.Models
                 registrationData = new RegistrationData((DateTime)data[5]);
                 registrationTrack = Track.GetTrack((int)data[6]);
                 assigned = (bool)data[7];
+                gameVersion = (int)data[8];
 
                 return true;
             }
@@ -686,6 +693,7 @@ namespace WindWingAppServer.Models
             this.prefix = "";
 
             this.races = new List<Race>(racesCount);
+            this.gameVersion = 2019;
 
             registrationData = new RegistrationData(DateTime.MinValue);
 
@@ -736,14 +744,30 @@ namespace WindWingAppServer.Models
         }
 
         string leaderboardsStr = "";
-        public void UpdateLeaderboards()
+        public string UpdateLeaderboards()
         {
+            string ret = "";
             int[] points = new int[users.Count];
             for (int i = 0; i < races.Count; i++)
             {
                 Race.Result bestLap = null;
                 for (int j = 0; j < races[i].results.Count; j++)
                 {
+                    if(races[i].results[j].dnsu)
+                    {
+                        // Find user
+                        for (int k = 0; k < users.Count; k++)
+                        {
+                            if (races[i].results[j].user.id == users[k].user.id)
+                            {
+                                points[k] -= 1;
+                                break;
+                            }
+                        }
+
+                        continue;
+                    }
+
                     if(bestLap == null)
                     {
                         bestLap = races[i].results[j];
@@ -784,24 +808,112 @@ namespace WindWingAppServer.Models
                 }
             }
 
-            leaderboardsStr = points.Length.ToString() + "{";
+            ret = points.Length.ToString() + "{";
             for (int i = 0; i < points.Length; i++)
             {
-                leaderboardsStr += "(" + users[i].user.id + "," + points[i].ToString() + "," + users[i].team.shortName + ")";
+                ret += "(" + users[i].user.id + "," + points[i].ToString() + "," + users[i].team.shortName + ")";
                 if (i != points.Length - 1)
                 {
-                    leaderboardsStr += ";";
+                    ret += ";";
                 }
             }
-            leaderboardsStr += "}";
+            ret += "}";
 
+
+            leaderboardsStr = ret;
+            return ret;
+
+        }
+
+        string teamLeaderboardsStr = "";
+        public string UpdateTeamLeaderboards()
+        {
+            string ret = "";
+            int[] points = new int[Team.teams.Length];
+
+            for (int i = 0; i < races.Count; i++)
+            {
+                Race.Result bestLap = null;
+                for (int j = 0; j < races[i].results.Count; j++)
+                {
+
+                    if(races[i].results[j].dnsu)
+                    {
+                        // Find user
+                        for (int k = 0; k < users.Count; k++)
+                        {
+                            if (races[i].results[j].user.id == users[k].user.id)
+                            {
+                                points[users[k].team.id] -= 1;
+                                break;
+                            }
+                        }
+                        continue;
+                    }
+
+                    if (bestLap == null)
+                    {
+                        bestLap = races[i].results[j];
+                    }
+                    else if (races[i].results[j].bestLap < bestLap.bestLap)
+                    {
+                        bestLap = races[i].results[j];
+                    }
+                    if (races[i].results[j].dnf || !races[i].results[j].started)
+                    {
+                        continue;
+                    }
+                    // Find user
+                    for (int k = 0; k < users.Count; k++)
+                    {
+                        if (races[i].results[j].user.id == users[k].user.id)
+                        {
+                            points[users[k].team.id] += GetPoints(races[i].results[j].place);
+                            break;
+                        }
+                    }
+                }
+                if (races[i].date < DateTime.Now && bestLap != null && bestLap.bestLap != TimeSpan.Zero)
+                {
+                    // Must be in points to get additional best lap point
+                    if (bestLap.place < 10 && bestLap.place >= 0 && !bestLap.dnf && bestLap.started)
+                    {
+                        // Find user
+                        for (int k = 0; k < users.Count; k++)
+                        {
+                            if (bestLap.user.id == users[k].user.id)
+                            {
+                                points[users[k].team.id] += 1;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            ret = Team.teams.Length.ToString() + "{";
+            for(int i = 0;i<Team.teams.Length;i++)
+            {
+                ret += "(" + Team.teams[i].id.ToString() + "," + points[i].ToString() + ")";
+                if (i != points.Length - 1)
+                {
+                    ret += ";";
+                }
+            }
+            ret += "}";
+
+            teamLeaderboardsStr = ret;
+            return ret;
+        }
+
+        public string GetTeamLeaderboards()
+        {
+            return UpdateTeamLeaderboards();
         }
 
         public string GetLeaderboards()
         {
-            UpdateLeaderboards();
-
-            return leaderboardsStr;
+            return UpdateLeaderboards();
         }
     }
 }

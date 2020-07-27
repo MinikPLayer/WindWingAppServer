@@ -26,12 +26,14 @@ namespace WindWingAppServer
                 add = "-addDNF";
             }
 
-            #if !DEBUG
+#if !DEBUG
                 if (clear)
                 {
                     clear = MUtil.AskUserYesNo("clear the database?");
                 }
-            #endif
+#endif
+
+            //add = "-addSeasonGameVersion";
 
             WindWingAppServer server = new WindWingAppServer(clear, add);
         }

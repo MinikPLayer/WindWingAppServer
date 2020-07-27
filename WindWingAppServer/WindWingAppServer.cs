@@ -15,8 +15,8 @@ namespace WindWingAppServer
         MSQL sql;
         NetworkData networkData;
 
-        public const string appVersion = "0.7.0a2";
-        public const int protocolVersion = 4;
+        public const string appVersion = "0.7.0a3";
+        public const int protocolVersion = 5;
         public static int appLatestVersion = 52;
 
         //public List<User> users = new List<User>();
@@ -298,7 +298,8 @@ namespace WindWingAppServer
                             new MSQL.Value("finishedraces", season.finishedRaces),
                             new MSQL.Value("registrationend", season.registrationData.endDate),
                             new MSQL.Value("timetrackid", season.registrationTrack.id),
-                            new MSQL.Value("assigned", season.assigned)
+                            new MSQL.Value("assigned", season.assigned),
+                            new MSQL.Value("gameversion", season.gameVersion)
                         }, "id=" + season.id.ToString());
                         overwritten = true;
 
@@ -341,7 +342,8 @@ namespace WindWingAppServer
                     new MSQL.Value("finishedraces", season.finishedRaces),
                     new MSQL.Value("registrationend", season.registrationData.endDate),
                     new MSQL.Value("timetrackid", season.registrationTrack.id),
-                    new MSQL.Value("assigned", season.assigned)
+                    new MSQL.Value("assigned", season.assigned),
+                    new MSQL.Value("gameversion", season.gameVersion)
                 });
 
                 int count = sql.ReadEntry<int>("dbinfo", new MSQL.Column("seasonsCount", MSQL.ColumnType.INT))[0];
@@ -404,25 +406,29 @@ namespace WindWingAppServer
                         sql.CreateTable(tableName, new List<MSQL.Column>
                         {
                             new MSQL.Column("user", MSQL.ColumnType.INT),
+                            new MSQL.Column("team", MSQL.ColumnType.INT),
                             new MSQL.Column("place", MSQL.ColumnType.INT),
                             new MSQL.Column("bestlap", MSQL.ColumnType.TIME, false),
                             new MSQL.Column("time", MSQL.ColumnType.TIME, false),
                             new MSQL.Column("dnf", MSQL.ColumnType.BOOLEAN),
-                            new MSQL.Column("started", MSQL.ColumnType.BOOLEAN)
+                            new MSQL.Column("started", MSQL.ColumnType.BOOLEAN),
+                            new MSQL.Column("dnsu", MSQL.ColumnType.BOOLEAN)
                         });
 
-                        Debug.Log("Creating table for race: " + i.ToString());
+                        //Debug.Log("Creating table for race: " + i.ToString());
                         for(int j = 0;j<season.races[i].results.Count;j++)
                         {
-                            Debug.Log("\tAdding entry for user " + j.ToString());
+                            //Debug.Log("\tAdding entry for user " + j.ToString());
                             sql.AddEntry(tableName, new List<MSQL.Value>
                             {
                                 new MSQL.Value("user", season.races[i].results[j].user.id),
+                                new MSQL.Value("team", season.races[i].results[j].team.id),
                                 new MSQL.Value("place", season.races[i].results[j].place),
                                 new MSQL.Value("bestlap", season.races[i].results[j].bestLap),
                                 new MSQL.Value("time", season.races[i].results[j].time),
                                 new MSQL.Value("dnf", season.races[i].results[j].dnf),
-                                new MSQL.Value("started", season.races[i].results[j].started)
+                                new MSQL.Value("started", season.races[i].results[j].started),
+                                new MSQL.Value("dnsu", season.races[i].results[j].dnsu)
                             });
                         }
                     }
@@ -525,7 +531,8 @@ namespace WindWingAppServer
                 new MSQL.Column("prefix", MSQL.ColumnType.STRING),
                 new MSQL.Column("registrationend", MSQL.ColumnType.DATETIME),
                 new MSQL.Column("timetrackid", MSQL.ColumnType.INT),
-                new MSQL.Column("assigned", MSQL.ColumnType.BOOLEAN)
+                new MSQL.Column("assigned", MSQL.ColumnType.BOOLEAN),
+                new MSQL.Column("gameversion", MSQL.ColumnType.INT)
             });
 
             sql.CreateTable("users", new List<MSQL.Column>() {
@@ -566,7 +573,7 @@ namespace WindWingAppServer
                     seasons[0].races[i].results = new List<Race.Result>();
                     for (int j = 0; j < seasons[0].users.Count; j++)
                     {
-                        seasons[0].races[i].results.Add(new Race.Result(seasons[0].users[j].user, j + 1, new TimeSpan(0, 0, 1, 25, 255), new TimeSpan(0,0,5,50,500)));
+                        seasons[0].races[i].results.Add(new Race.Result(seasons[0].users[j].user, seasons[0].users[j].team, j + 1, new TimeSpan(0, 0, 1, 25, 255), new TimeSpan(0,0,5,50,500)));
                     }
                 }
 
@@ -664,11 +671,13 @@ namespace WindWingAppServer
             List<object[]> oObjects = sql.ReadEntries(race.resultsTable, new List<MSQL.Column>
             {
                 new MSQL.Column("user", MSQL.ColumnType.INT),
+                new MSQL.Column("team", MSQL.ColumnType.INT),
                 new MSQL.Column("place", MSQL.ColumnType.INT),
                 new MSQL.Column("bestlap", MSQL.ColumnType.TIME, false),
                 new MSQL.Column("time", MSQL.ColumnType.TIME, false),
                 new MSQL.Column("dnf", MSQL.ColumnType.BOOLEAN),
-                new MSQL.Column("started", MSQL.ColumnType.BOOLEAN)
+                new MSQL.Column("started", MSQL.ColumnType.BOOLEAN),
+                new MSQL.Column("dnsu", MSQL.ColumnType.BOOLEAN), // DO NOT STARTED UNDECLARED
             });
 
             List<object[]> objects = MUtil.FlipSQLData(oObjects);
@@ -731,7 +740,8 @@ namespace WindWingAppServer
                     new MSQL.Column("prefix", MSQL.ColumnType.STRING),
                     new MSQL.Column("registrationend", MSQL.ColumnType.DATETIME),
                     new MSQL.Column("timetrackid", MSQL.ColumnType.INT),
-                    new MSQL.Column("assigned", MSQL.ColumnType.BOOLEAN)
+                    new MSQL.Column("assigned", MSQL.ColumnType.BOOLEAN),
+                    new MSQL.Column("gameversion", MSQL.ColumnType.INT)
                 });
 
                 var uObjects = MUtil.FlipSQLData(objects);
@@ -773,28 +783,23 @@ namespace WindWingAppServer
             LoadSeasonsFromDB();
         }
 
+
+        public string GenerateTeamLeaderboardsString(int season)
+        {
+            try
+            {
+                var s = GetSeason(season);
+                return s.GetTeamLeaderboards();
+            }
+            catch (Exception e)
+            {
+                Debug.Exception(e, "[WindWingAppServer.GenerateLeaderboardsString]");
+                return "";
+            }
+        }
+
         public string GenerateLeaderboardsString(int season)
         {
-            // Placeholder
-            /*if (season == 1)
-            {
-                return "25{(Quorthon,162,RDB);(Minik,127,MCL);(kypE,134,RDB);(BARTEQ,75,HAS);(Skomek,80,TRS);(Rogar2630,61,FER);(Patryk913,84,TRS);(Giro,68,ARM);(Yomonoe,44,MCL);(Copy JR,39,REN);(R4zor,37,MER);(slepypirat,34,RPT);(koczejk,26,HAS);(Shiffer,26,RPT);(cichy7220,23,MER);(Allu,21,OTH);(Myslav,14,OTH);(Hokejode,11,ARM);(Paw3lo,10,OTH);(Lewandor,16,OTH);(xVenox,1,OTH);(Kamilos61,0,REN);(Grok12,-1,FER);([SOL]NikoMon,-2,OTH);(Bany,-2,OTH)}";
-            }
-            else
-            {
-
-                try
-                {
-                    var s = GetSeason(season);
-                    return s.GetLeaderboards();
-                }
-                catch (Exception e)
-                {
-                    Debug.Exception(e, "[WindWingAppServer.GenerateLeaderboardsString]");
-                    return "";
-                }
-            }*/
-
             try
             {
                 var s = GetSeason(season);
@@ -995,17 +1000,29 @@ namespace WindWingAppServer
                 Debug.Log("Clearing complete");
             }
 
-            if(additionalCmds == "-addDNF")
+            if (additionalCmds.Length > 0)
             {
-                string[] lines = sql.ExecuteCommand("SHOW TABLES;");
-                Debug.Log("-addDNF");
-                for(int i = 0;i<lines.Length;i++)
+                if (additionalCmds == "-addSeasonGameVersion")
                 {
-                    //Debug.Log(lines[i]);
-                    if(lines[i].Contains("_results_"))
+                    sql.ExecuteCommand("ALTER TABLE seasons ADD COLUMN gameversion INT NOT NULL DEFAULT (2019)");
+                }
+                else
+                {
+                    string[] lines = sql.ExecuteCommand("SHOW TABLES;");
+                    Debug.Log("-addDNF");
+                    for (int i = 0; i < lines.Length; i++)
                     {
-                        sql.ExecuteCommand("ALTER TABLE " + lines[i] + " ADD COLUMN dnf BOOLEAN NOT NULL");
-                        sql.ExecuteCommand("ALTER TABLE " + lines[i] + " ADD COLUMN started BOOLEAN NOT NULL");
+                        if (additionalCmds == "-addDNF")
+                        {
+                            //Debug.Log(lines[i]);
+                            if (lines[i].Contains("_results_"))
+                            {
+                                sql.ExecuteCommand("ALTER TABLE " + lines[i] + " ADD COLUMN dnf BOOLEAN NOT NULL");
+                                sql.ExecuteCommand("ALTER TABLE " + lines[i] + " ADD COLUMN started BOOLEAN NOT NULL");
+                                sql.ExecuteCommand("ALTER TABLE " + lines[i] + " ADD COLUMN dnsu BOOLEAN NOT NULL");
+                                sql.ExecuteCommand("ALTER TABLE " + lines[i] + " ADD COLUMN team INT NOT NULL");
+                            }
+                        }
                     }
                 }
             }

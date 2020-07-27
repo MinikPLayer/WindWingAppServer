@@ -96,6 +96,7 @@ namespace WindWingAppServer
 
                 Debug.Log("Got welcome packet from " + connection.IPRemoteEndPoint.Address.ToString() + " - version: " + version.ToString());
 
+                connection.RegisterRawDataHandler("TeamLeaderboards", TeamLeaderboardsDataRequested);
                 connection.RegisterRawDataHandler("Leaderboards", LeaderboardsDataRequested);
                 connection.RegisterRawDataHandler("Login", LoginRequest);
                 connection.RegisterRawDataHandler("LoginT", LoginTRequest);
@@ -567,7 +568,7 @@ namespace WindWingAppServer
                                         return;
                                     }
                                     Send(con, data.Key, "OK");
-                                    season.Log();
+                                    //season.Log();
                                     break;
                                 }
 
@@ -854,6 +855,29 @@ namespace WindWingAppServer
                 Send(con, data.Key, server.GenerateLeaderboardsString(int.Parse(info[0])));
             }
             catch(Exception e)
+            {
+                Send(con, data.Key, "IE;Wewnętrzny błąd servera podczas przetwarzania żądania;" + e.ToString());
+                Debug.Exception(e, "[NetworkData.LeaderboardsDataRequested]");
+            }
+            //con.SendRawData(RawDataConverter.FromUTF8String("Leaderboards", server.GenerateLeaderboardsString()));
+        }
+
+        void TeamLeaderboardsDataRequested(RawData data, Connection con)
+        {
+            try
+            {
+                string[] info = GetString(data).Split(';');
+
+                if (info.Length == 0)
+                {
+                    Debug.Log("Not enough information specified");
+                    Send(con, data.Key, "BP;Nie sprecyzowano wszystkich informacji");
+                    return;
+                }
+
+                Send(con, data.Key, server.GenerateTeamLeaderboardsString(int.Parse(info[0])));
+            }
+            catch (Exception e)
             {
                 Send(con, data.Key, "IE;Wewnętrzny błąd servera podczas przetwarzania żądania;" + e.ToString());
                 Debug.Exception(e, "[NetworkData.LeaderboardsDataRequested]");
